@@ -1,13 +1,13 @@
-"""Cook approved 0.1.7 r2 geometry into private native-material skeletal mesh assets.
+"""Cook approved 0.1.9 revision 1 geometry into private native-material skeletal mesh assets.
 Retain the original skeletal buffer layout and use only root-weighted vertices
 for added static parts, with separate sections/assets when capacity is exceeded.
 """
 import base64,copy,json
 import numpy as np
 from asset_io import HERE,gltf
-from blender_model import load_model
+from model_mesh_019 import load_model
 
-OUT=HERE/'game-prototype-0.1.7';OUT.mkdir(exist_ok=True)
+OUT=HERE/'game-prototype-0.1.9';OUT.mkdir(exist_ok=True)
 OFF={'position':136048,'tangent':246150,'uv':319542,'index':73944}
 N=9173
 PKG='/Game/Mods/CompactBackpack16/'
@@ -23,6 +23,7 @@ def private(d,label,raw):
     return d
 
 def build_meshes():
+    # The approved procedural export is frozen; the Blender copy is not read.
     ns=load_model()
     _,a,ids=gltf(HERE/'exports/Models/backpack_mk2/backpack_mk2.gltf')
     root=np.flatnonzero(np.all((a['JOINTS_0']==0)|(a['WEIGHTS_0']==0),axis=1))
@@ -30,12 +31,17 @@ def build_meshes():
     original=source();raw=bytearray(base64.b64decode(original['Exports'][0]['Extras']))
     assert np.array_equal(np.frombuffer(raw,'<u2',count=ids.size,offset=OFF['index']).reshape(-1,3),ids)
     assert np.allclose(np.frombuffer(raw,'<f4',count=N*3,offset=OFF['position']).reshape(-1,3),p,atol=1e-4)
-    result={};report={'approved_model':'0.1.7-r2','assets':{},'atlas_uv':{}}
+    result={};report={'approved_model':'0.1.9-r1','assets':{},'atlas_uv':{},
+                     'socket_centre_native_x':float(ns['socket_centre_x']),
+                     'battery_centre_native_x':-13.8+ns['BATTERY_BACK_SHIFT'],
+                     'approved_model_sha256':ns['approved_model_sha256']}
     # Exact approved rear and shoulder triangles, including all animated components.
     bodyids=ids.copy();bodyids[~ns['keep']]=0
     raw[OFF['index']:OFF['index']+ids.nbytes]=bodyids.astype('<u2').tobytes()
+    # Preserve all native body UVs. The drone mount is a separate runtime mesh.
+    uv=a['TEXCOORD_0'].copy()
     result['backpack_mk2']=private(copy.deepcopy(original),'backpack_mk2',raw)
-    np.savez(OUT/'body-expected.npz',positions=p,indices=bodyids,keep=ns['keep'])
+    np.savez(OUT/'body-expected.npz',positions=p,indices=bodyids,keep=ns['keep'],uv=uv)
     # Socket mesh retains all of its original UV, tangent and skeletal data.
     native_groups=json.loads((HERE/'native-connected-parts.json').read_text())
     si=np.array(next(g['indices'] for g in native_groups if g['id']==8825));sv=np.unique(ids[si])
@@ -87,6 +93,27 @@ def build_meshes():
         np.savez(OUT/(label+'-expected.npz'),positions=pos,uv=tex.astype('f4'),indices=indices,normals=normal,allocated=allocated)
         report['assets'][label]={'vertices':len(v),'triangles':len(f),'parts':[x['name'] for x in batch],'materials':{x['name']:x['mat'] for x in batch}}
     report['front_components']=list(report['assets'])
+    # Copy the actual native drone-slot geometry, with its own atlas coordinates
+    # remapped to native backpack socket samples. Shape and normals stay native.
+    _,da,di=gltf(HERE/'exports/Slots/Content/new/slot_t1b_i.gltf')
+    dv=da['POSITION'][:,[0,2,1]]*100
+    du=da['TEXCOORD_0'];red=du[:,0]>.2;dark=du[:,1]>.08;grey=~(red|dark)
+    assert (red.sum(),grey.sum(),dark.sum())==(160,152,25)
+    assert len(dv)==337 and len(di)==312
+    duv=np.empty_like(du);duv[red]=palette['red'];duv[grey]=palette['eyelet'];duv[dark]=palette['dark']
+    allocated=root[:len(dv)];pos=np.zeros((N,3),'<f4');tex=np.zeros((N,2),'<f2');tan=np.zeros((N,8),'i1')
+    pos[allocated]=dv;tex[allocated]=duv
+    tan[allocated,:3]=np.round(da['TANGENT'][:,[0,2,1]]*127).astype('i1');tan[allocated,3]=127
+    tan[allocated,4:7]=np.round(da['NORMAL'][:,[0,2,1]]*127).astype('i1');tan[allocated,7]=127
+    drone_indices=np.zeros_like(ids);drone_indices[:len(di)]=allocated[di]
+    raw=bytearray(base64.b64decode(original['Exports'][0]['Extras']))
+    for key,array in [('position',pos),('uv',tex),('tangent',tan),('index',drone_indices.astype('<u2'))]:
+        raw[OFF[key]:OFF[key]+array.nbytes]=array.tobytes()
+    result['drone_socket']=private(copy.deepcopy(original),'drone_socket',raw)
+    np.savez(OUT/'drone-expected.npz',positions=pos,uv=tex.astype('f4'),indices=drone_indices,allocated=allocated)
+    report['drone_palette']={'source':'vanilla slot_t1b_i; native backpack socket UV samples and shared dynamic material',
+        'vertices':337,'triangles':312,'geometry_unchanged':True,'body_uv_unchanged':True,'live_only':True}
+
     report['all_animated_triangles_preserved']=bool(ns['keep'][~np.all(np.isin(ids,root),axis=1)].all())
     assert report['all_animated_triangles_preserved']
     (OUT/'geometry-report.json').write_text(json.dumps(report,indent=2))

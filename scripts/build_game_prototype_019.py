@@ -3,8 +3,8 @@ No original Backpack16 PAK, JSON, functions, or components are build inputs.
 """
 import base64,copy,hashlib,json,subprocess,uuid
 from investigate import GUI,REPAK,ENV,extract
-from native_revision_017 import HERE,OUT,PKG,build_meshes
-from visual_components_017 import add_visual_components
+from native_revision_019 import HERE,OUT,PKG,build_meshes
+from visual_components_019 import add_visual_components
 
 STAGE=OUT/'staging'
 def ps(e):return {p['Name']:p for p in e.get('Data',[])}
@@ -73,18 +73,22 @@ def configure(d,slot_names,front,corpse=False):
     setbool(d,ex[parent+'_GEN_VARIABLE'],'bUseAttachParentBound',True)
     # Keep the native item attachment-to-visible-socket depth offset.
     native_cx=json.loads((OUT/'socket-source.json').read_text())['centre'][0]
-    target_x=-13.9+(-15.1315727234-native_cx)
+    geometry=json.loads((OUT/'geometry-report.json').read_text())
+    target_x=geometry['socket_centre_native_x']+(-15.1315727234-native_cx)
     for n,var in enumerate(slot_names):
         e=ex[var+'_GEN_VARIABLE'];side=(1 if n%2==0 else -1) if corpse else (-1 if n%2==0 else 1)
         y=side*(40 if n<8 else 18);z=[47.,14.3,-18.1,-51.][n%8//2]
         location(d,e,[target_x-origin['X'],y-origin['Y'],z-origin['Z']])
-        # Original .25 native component scale, with no item-size reduction.
+        # The visible socket is independent; only main attached items shrink.
         assert all(abs(float(xyz(ps(e)['RelativeScale3D'])[k])-.25)<1e-7 for k in 'XYZ')
+        xyz(ps(e)['RelativeScale3D']).update(X=.20,Y=.20,Z=.20)
         setbool(d,e,'SlotVisible',False);setbool(d,e,'bVisible',False)
     for key in ['Power Bar_GEN_VARIABLE']+([] if corpse else ['PowerBarOverlay_GEN_VARIABLE']):
         p=ps(ex[key]);scale=xyz(p['RelativeScale3D']);scale.update(X=.09,Y=.09)
-        xyz(p['RelativeLocation']).update(X=-13.8,Y=0.)
+        xyz(p['RelativeLocation']).update(X=geometry['battery_centre_native_x'],Y=0.)
     if not corpse:
+        # Suppress only the original mount visual; its attachment slot stays native.
+        setbool(d,ex['Creative Drone Slot_GEN_VARIABLE'],'SlotVisible',False)
         # Native casing width allows native control/drone locations again.
         printer=ex['CLIENT Printer View']['ScriptBytecode']
         for i in [1,7,13]:
@@ -110,12 +114,12 @@ def build():
         provenance[asset]={ext:hashlib.sha256(path.with_suffix(ext).read_bytes()).hexdigest() for ext in ['.uasset','.uexp']}
         names=add_inventory_slots(d,corpse);configure(d,names,geometry['front_components'],corpse)
         write_asset(d,'Astro/Content/'+asset+'.uasset',asset.rsplit('/',1)[-1])
-    metadata={'schema_version':2,'name':'Compact Backpack 16 (test)','mod_id':'CompactBackpack16','author':'yue','description':'Independent vanilla-based sixteen-slot inventory and death backpack, approved native-style model, full-size items, dynamic palette materials.','version':'0.1.7','game_build':'1.45.1.0','sync':'serverclient'}
+    metadata={'schema_version':2,'name':'Backpack Deluxe (test)','mod_id':'CompactBackpack16','author':'yuexr','description':'Sixteen-slot backpack and death retrieval, approved 0.1.9 revision 1 model, 20% smaller main-slot items, palette-matched drone socket.','version':'0.1.9','game_build':'1.45.1.0','sync':'serverclient'}
     (STAGE/'metadata.json').write_text(json.dumps(metadata,indent=2))
-    pak=OUT/'000-CompactBackpack16-0.1.7_P.pak'
+    pak=OUT/'000-CompactBackpack16-0.1.9_P.pak'
     subprocess.run([str(REPAK),'pack',str(STAGE),str(pak)],check=True,timeout=120,capture_output=True)
-    report={'version':'0.1.7','vanilla_sources':provenance,'original_Backpack16_required':False,'geometry':geometry,
-            'main_slot_scale':.25,'item_size_multiplier':1.,'native_auxiliaries_unchanged':True,'controls_and_drone':'vanilla transforms',
+    report={'version':'0.1.9','vanilla_sources':provenance,'original_Backpack16_required':False,'geometry':geometry,
+            'main_slot_scale':.20,'item_size_multiplier':.8,'native_auxiliaries_unchanged':True,'controls_and_drone':'vanilla transforms and drone geometry; separate mount shares backpack material and native socket UVs',
             'installed':False,'gameplay_tested':False,'pak_sha256':hashlib.sha256(pak.read_bytes()).hexdigest()}
     (OUT/'build-report.json').write_text(json.dumps(report,indent=2))
     print('Built',pak)

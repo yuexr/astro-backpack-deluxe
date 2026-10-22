@@ -1,9 +1,9 @@
 """Our visual-component and material-sharing helpers for the vanilla-based build."""
 import base64,copy,json,uuid
-from native_revision_017 import HERE,OUT,PKG
+from native_revision_019 import HERE,OUT,PKG
 
 def add_visual_components(d,front_parts,corpse=False):
-    from build_game_prototype_017 import ps,xyz,location
+    from build_game_prototype_019 import ps,xyz,location
     def name(n):
         if n not in d['NameMap']:d['NameMap'].append(n)
         return n
@@ -22,7 +22,7 @@ def add_visual_components(d,front_parts,corpse=False):
     parent_name='ItemSlots' if corpse else 'Item Slots'
     parent=next(e for e in d['Exports'] if ps(e).get('InternalVariableName',{}).get('Value')==parent_name)
     origin=xyz(ps(next(e for e in d['Exports'] if e['ObjectName']==parent_name+'_GEN_VARIABLE'))['RelativeLocation'])
-    cx=-13.9
+    cx=json.loads((OUT/'geometry-report.json').read_text())['socket_centre_native_x']
     specifications=[]
     for n in range(16):
         y=(-40 if n%2==0 else 40) if n<8 else (-18 if n%2==0 else 18)
@@ -30,6 +30,7 @@ def add_visual_components(d,front_parts,corpse=False):
         specifications.append((f'NativeBackpackSocket{n+1}','backpack_socket',.88,[cx,y,z]))
     for mesh_part in front_parts:
         specifications.append(('Compact_'+mesh_part,mesh_part,1.,[0.,0.,0.]))
+    if not corpse:specifications.append(('NativeDroneSocket','drone_socket',.25,None))
     components=[]
     for variable,mesh_part,scale_value,centre in specifications:
         variable=name(variable);components.append(variable)
@@ -51,7 +52,15 @@ def add_visual_components(d,front_parts,corpse=False):
             name('NoCollision');name('ECollisionEnabled::NoCollision');e['Data'].append(body)
         scale=copy.deepcopy(next(q for x in d['Exports'] for q in x.get('Data',[]) if q['Name']=='RelativeScale3D'))
         xyz(scale).update(X=scale_value,Y=scale_value,Z=scale_value);e['Data'].append(scale)
-        location(d,e,[centre[i]-origin[k] for i,k in enumerate('XYZ')])
+        component_parent=parent
+        if variable=='NativeDroneSocket':
+            # Same transform as the native auto-created slot_t1b_i visual:
+            # slot transform plus its local Z=3 offset, scaled by .25.
+            slot=next(x for x in d['Exports'] if x['ObjectName']=='Creative Drone Slot_GEN_VARIABLE')
+            sp=ps(slot);loc=[float(xyz(sp['RelativeLocation'])[k]) for k in 'XYZ'];loc[1]-=.75
+            location(d,e,loc);e['Data'].append(copy.deepcopy(sp['RelativeRotation']))
+            component_parent=next(x for x in d['Exports'] if ps(x).get('InternalVariableName',{}).get('Value')=='Root')
+        else:location(d,e,[centre[i]-origin[k] for i,k in enumerate('XYZ')])
         e['CreateBeforeSerializationDependencies']=[asset]
         comp=append(e)
         node=copy.deepcopy(mesh_node);node.update(ObjectName=name('SCS_Node_'+variable),SerialSize=0,SerialOffset=0,Extras='')
@@ -59,7 +68,7 @@ def add_visual_components(d,front_parts,corpse=False):
         node['Data']=[prop('Object','ComponentClass',mesh['ClassIndex']),prop('Object','ComponentTemplate',comp),guid,prop('Name','InternalVariableName',variable)]
         node['CreateBeforeSerializationDependencies']=[comp,mesh['ClassIndex']]
         node_id=append(node)
-        for owner,key in [(parent,'ChildNodes'),(scs,'AllNodes')]:
+        for owner,key in [(component_parent,'ChildNodes'),(scs,'AllNodes')]:
             array=ps(owner)[key]['Value'];array.append(prop('Object',str(len(array)),node_id))
             owner['CreateBeforeSerializationDependencies'].append(node_id)
         field=copy.deepcopy(next(x for x in cls['LoadedProperties'] if x['Name']==mesh_name));field['Name']=variable

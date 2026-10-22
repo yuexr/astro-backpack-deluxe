@@ -10,7 +10,7 @@ def prepare():
     for asset in ['Models/backpack_mk2/backpack_mk2','Items/BackpackRail','Character/AstroCorpse']:
         extract('Astro/Content/'+asset)
     extract('Astro/Content/Models/backpack_mk2/backpack_mk2_Skeleton',as_json=False)
-    meshes=['Astro/Content/Models/backpack_mk2/backpack_mk2','Engine/Content/BasicShapes/Cylinder']
+    meshes=['Astro/Content/Models/backpack_mk2/backpack_mk2','Engine/Content/BasicShapes/Cylinder','Astro/Content/Slots/Content/new/slot_t1b_i']
     for asset in meshes:
         source=extract(asset,as_json=False)
         subprocess.run([str(UMODEL),'-export','-gltf','-noanim','-notex','-game=ue4.27',

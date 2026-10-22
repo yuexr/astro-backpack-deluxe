@@ -5,8 +5,8 @@ ROOT=Path(__file__).resolve().parent
 sys.path.insert(0,str(ROOT/'scripts'))
 
 def main():
-    parser=argparse.ArgumentParser(description='Backpack Deluxe 0.1.7 source tools (Windows / Astroneer 1.45.1.0).',
-        epilog='Install requirements.txt. Set BPD_REPAK, BPD_UASSETGUI and BPD_UMODEL to external executables, or put them in tools/. Set BPD_GAME_PAK if Astroneer is installed elsewhere. Set BPD_BLENDER to Blender if it is not on PATH or installed in the default Windows location. The editable source is models/backpack-deluxe.blend. Generated assets and dist/ are ignored. Nothing is installed into the game.')
+    parser=argparse.ArgumentParser(description='Backpack Deluxe 0.1.9 source tools (Windows / Astroneer 1.45.1.0).',
+        epilog='Install requirements.txt. Set BPD_REPAK, BPD_UASSETGUI and BPD_UMODEL to external executables, or put them in tools/. Set BPD_GAME_PAK if Astroneer is installed elsewhere. The approved mesh export is models/backpack-deluxe.glb. The Blender file is an optional inspection copy, and Blender is not required to build. Generated assets and dist/ are ignored. Nothing is installed into the game.')
     parser.add_argument('command',choices=['prepare','build','verify','package'])
     args=parser.parse_args()
     from investigate import PAK,REPAK,GUI,UMODEL
@@ -16,9 +16,9 @@ def main():
     def run(script):subprocess.run([sys.executable,str(ROOT/'scripts'/script)],check=True)
     if args.command=='prepare':run('prepare_assets.py')
     elif args.command=='build':
-        run('prepare_assets.py');run('build_game_prototype_017.py');run('verify_game_prototype_017.py')
-    elif args.command=='verify':run('verify_game_prototype_017.py')
+        run('prepare_assets.py');run('build_game_prototype_019.py');run('verify_game_prototype_019.py')
+    elif args.command=='verify':run('verify_game_prototype_019.py')
     elif args.command=='package':
-        run('verify_game_prototype_017.py');run('package_revision_017.py')
+        run('verify_game_prototype_019.py');run('package_revision_019.py')
 
 if __name__=='__main__':main()
