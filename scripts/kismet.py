@@ -14,14 +14,23 @@ def kismet_size(x):
         "EX_IntZero",
         "EX_Nothing",
         "EX_EndOfScript",
+        "EX_PopExecutionFlow",
     ]:
         return 1
     if t in ["EX_InstanceVariable", "EX_LocalVariable", "EX_ObjectConst"]:
         return 9
-    if t == "EX_FloatConst":
+    if t in ["EX_FloatConst", "EX_IntConst"]:
         return 5
+    if t == "EX_ByteConst":
+        return 2
+    if t in ["EX_VirtualFunction", "EX_LocalVirtualFunction"]:
+        return 14 + sum(map(kismet_size, x["Parameters"]))
     if t == "EX_StringConst":
         return len(x["Value"].encode("ascii")) + 2
+    if t == "EX_NameConst":
+        return 13
+    if t == "EX_NoObject":
+        return 1
     if t in ["EX_FinalFunction", "EX_LocalFinalFunction", "EX_CallMath"]:
         return 10 + sum(map(kismet_size, x["Parameters"]))
     if t == "EX_Context":
@@ -41,4 +50,34 @@ def kismet_size(x):
         return 5 + kismet_size(x["BooleanExpression"])
     if t == "EX_Return":
         return 1 + kismet_size(x["ReturnExpression"])
+    if t in ["EX_Jump", "EX_PushExecutionFlow"]:
+        return 5
+    if t == "EX_Let":
+        return 9 + kismet_size(x["Variable"]) + kismet_size(x["Expression"])
+    if t == "EX_LetObj":
+        return (
+            1
+            + kismet_size(x["VariableExpression"])
+            + kismet_size(x["AssignmentExpression"])
+        )
+    if t == "EX_PopExecutionFlowIfNot":
+        return 1 + kismet_size(x["BooleanExpression"])
+    if t == "EX_StructConst":
+        return 14 + sum(map(kismet_size, x["Value"]))
+    if t == "EX_StructMemberContext":
+        return 9 + kismet_size(x["StructExpression"])
+    if t == "EX_DynamicCast":
+        return 9 + kismet_size(x["Target"])
+    if t == "EX_PrimitiveCast":
+        return 2 + kismet_size(x["Target"])
+    if t == "EX_SwitchValue":
+        return (
+            7
+            + kismet_size(x["IndexTerm"])
+            + kismet_size(x["DefaultTerm"])
+            + sum(
+                kismet_size(c["CaseIndexValueTerm"]) + 4 + kismet_size(c["CaseTerm"])
+                for c in x["Cases"]
+            )
+        )
     raise ValueError(t)

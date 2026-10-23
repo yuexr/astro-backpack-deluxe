@@ -146,6 +146,41 @@ for label, path, corpse in [
             assert type_(actual.pop(0)) == "EX_LocalFinalFunction"
             added = 10
         if n == "CLIENT Printer View":
+            from kismet import kismet_size
+
+            # Only the native output-tooltip decision changes. Undo that gate
+            # and its branch relocation before comparing the rest byte for byte.
+            gated = actual[47]["AssignmentExpression"]
+            assert d["Imports"][-gated["StackNode"] - 1]["ObjectName"] == "BooleanAND"
+            hidden = gated["Parameters"][1]
+            assert d["Imports"][-hidden["StackNode"] - 1]["ObjectName"] == "Not_PreBool"
+            assert hidden["Parameters"][0]["Variable"]["New"]["Path"] == [
+                "BPM_PrinterTooltipHidden"
+            ]
+            native = gated["Parameters"][0]
+            delta = kismet_size(gated) - kismet_size(native)
+            added += delta
+            old_end = sum(map(kismet_size, expected[:48]))
+            actual[47]["AssignmentExpression"] = native
+
+            def undo_relocation(value, old_end=old_end, delta=delta):
+                if isinstance(value, dict):
+                    for key, child in value.items():
+                        if key in [
+                            "CodeOffset",
+                            "PushingAddress",
+                            "EndGotoOffset",
+                            "NextOffset",
+                        ]:
+                            if child >= old_end + delta:
+                                value[key] = child - delta
+                        else:
+                            undo_relocation(child)
+                elif isinstance(value, list):
+                    for child in value:
+                        undo_relocation(child)
+
+            undo_relocation(actual)
             for i in [1, 7, 13]:
                 expected[i]["Expression"]["Value"] = 0.001
             for i in [4, 10, 16]:
@@ -424,7 +459,7 @@ listing = subprocess.check_output(
 expected = sorted(
     p.relative_to(STAGE).as_posix() for p in STAGE.rglob("*") if p.is_file()
 )
-assert sorted(listing) == expected and len(listing) == 2 * (6 + len(front_labels)) + 1
+assert sorted(listing) == expected and len(listing) == 2 * (10 + len(front_labels)) + 1
 for member in listing:
     data = subprocess.check_output([str(REPAK), "get", str(pak), member])
     assert data == (STAGE / member).read_bytes(), member
@@ -448,5 +483,9 @@ report["resource_order"] = resource_order
 from verify_behaviors import check_behaviors
 
 report["offline_checks"].extend(check_behaviors(assets, geometry))
+from verify_printer import check_printer
+
+report["offline_checks"].extend(check_printer(assets))
+report["printer_tooltip_verified"] = True
 (OUT / "build-report.json").write_text(json.dumps(report, indent=2))
 print(f"{VERSION}: {len(report['offline_checks'])} build checks passed.")

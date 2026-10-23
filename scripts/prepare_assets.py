@@ -16,12 +16,18 @@ def prepare():
         "Character/AstroCorpse",
         "Items/Catalog/BackpackCatalog",
         "Items/Catalog/BackpackCatalog_Creative",
+        "Components/Printhead_Backpack",
+        "Components/PrintheadSelector",
+        "ControlPanels/ModularControlPanel/PanelParts/ControlPanelButton_Round",
+        "ControlPanels/ModularControlPanel/PanelParts/ControlPanelButtonBase",
+        "Models/ControlPanels/control_panel_button_round_arrow",
     ]:
         extract("Astro/Content/" + asset)
     extract("Astro/Content/Models/backpack_mk2/backpack_mk2_Skeleton", as_json=False)
     meshes = [
         "Astro/Content/Models/backpack_mk2/backpack_mk2",
         "Astro/Content/Slots/Content/new/slot_t1b_i",
+        "Astro/Content/Models/ControlPanels/control_panel_button_round_arrow",
     ]
     for asset in meshes:
         source = extract(asset, as_json=False)

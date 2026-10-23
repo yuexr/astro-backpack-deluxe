@@ -9,7 +9,8 @@ from settings import ARCHIVE_NAME, OUT, PAK_NAME, ROOT, VERSION
 DIST = ROOT / "dist"
 DIST.mkdir(exist_ok=True)
 report = json.loads((OUT / "build-report.json").read_text())
-assert len(report["offline_checks"]) == 16
+assert report["version"] == VERSION
+assert len(report["offline_checks"]) == 22 and report["printer_tooltip_verified"]
 pak = OUT / PAK_NAME
 assert hashlib.sha256(pak.read_bytes()).hexdigest() == report["pak_sha256"]
 archive = DIST / ARCHIVE_NAME

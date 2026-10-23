@@ -10,6 +10,7 @@ from asset_io import HERE, append, es, location, name, prop, ps, setbool, xyz
 from catalog import patch_catalog_startup
 from game_assets import ENV, GUI, REPAK, extract
 from mesh_assets import build_meshes
+from printer_tooltip import build_printer_assets, patch_backpack
 from settings import (
     GAME_BUILD,
     ITEM_SIZE_MULTIPLIER,
@@ -205,6 +206,8 @@ def build():
     meshes, geometry = build_meshes()
     for label, d in meshes.items():
         write_asset(d, f"Astro/Content/Mods/CompactBackpack16/{label}.uasset", label)
+    for label, (document, target) in build_printer_assets().items():
+        write_asset(document, target, label)
     provenance = {}
     for asset, corpse in [
         ("Items/BackpackRail", False),
@@ -218,6 +221,8 @@ def build():
         }
         names = add_inventory_slots(d, corpse)
         configure(d, names, geometry["front_components"], corpse)
+        if not corpse:
+            patch_backpack(d)
         write_asset(d, "Astro/Content/" + asset + ".uasset", asset.rsplit("/", 1)[-1])
     catalog = patch_catalog_startup()
     write_asset(
@@ -225,11 +230,11 @@ def build():
     )
     metadata = {
         "schema_version": 2,
-        "name": "Backpack Pro Max (test)",
+        "name": "Backpack Pro Max",
         # Keep the same mod ID when replacing an older version.
         "mod_id": "CompactBackpack16",
         "author": "yuexr",
-        "description": "16 backpack slots. Main-slot items are 80% of vanilla size.",
+        "description": "16 backpack slots, 80% item size and an eye button to hide or show the printer recipe tooltip.",
         "version": VERSION,
         "game_build": GAME_BUILD,
         "sync": "serverclient",
