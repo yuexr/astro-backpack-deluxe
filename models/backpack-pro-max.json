@@ -5,5 +5,5 @@
   "workflow": "Approved mesh export is the game build input; Blender is an optional inspection copy.",
   "geometry_frozen_from": "0.1.9-r1",
   "approved_base_binary_sha256": "e2dea063f1194f55c46913196996eff5eaed737157c7c239914bbb908ce3ed23",
-  "approved_model_document_sha256": "9fae3f2fd52d7c18ea25bfacb4b2f5a0c5dd54fb19506237f8445b005b237e97"
+  "approved_model_document_sha256": "5aea016df1d401198e1e748cf00f9f34e84e8047ce135f5fd7b0440c0a8be4e2"
 }

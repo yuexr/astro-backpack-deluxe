@@ -1,31 +1,53 @@
-"""Regenerate ignored source assets from the user's base-game PAK, never deployed mods."""
-import hashlib,json,subprocess
-import numpy as np
-from asset_io import HERE,gltf
-from investigate import UMODEL,extract
+"""Extract the vanilla assets needed for the build."""
+
+import hashlib
+import json
+import subprocess
+
+from asset_io import HERE
+from game_assets import UMODEL, extract
+
 
 def prepare():
-    # Read just the input mesh/skeleton, blueprint sources and atlas textures.
-    # -notex prevents UE Viewer from resolving unrelated material dependencies.
-    for asset in ['Models/backpack_mk2/backpack_mk2','Items/BackpackRail','Character/AstroCorpse','Items/Catalog/BackpackCatalog','Items/Catalog/BackpackCatalog_Creative']:
-        extract('Astro/Content/'+asset)
-    extract('Astro/Content/Models/backpack_mk2/backpack_mk2_Skeleton',as_json=False)
-    meshes=['Astro/Content/Models/backpack_mk2/backpack_mk2','Engine/Content/BasicShapes/Cylinder','Astro/Content/Slots/Content/new/slot_t1b_i']
+    # The game already supplies the materials; we only need the meshes and blueprints.
+    for asset in [
+        "Models/backpack_mk2/backpack_mk2",
+        "Items/BackpackRail",
+        "Character/AstroCorpse",
+        "Items/Catalog/BackpackCatalog",
+        "Items/Catalog/BackpackCatalog_Creative",
+    ]:
+        extract("Astro/Content/" + asset)
+    extract("Astro/Content/Models/backpack_mk2/backpack_mk2_Skeleton", as_json=False)
+    meshes = [
+        "Astro/Content/Models/backpack_mk2/backpack_mk2",
+        "Astro/Content/Slots/Content/new/slot_t1b_i",
+    ]
     for asset in meshes:
-        source=extract(asset,as_json=False)
-        subprocess.run([str(UMODEL),'-export','-gltf','-noanim','-notex','-game=ue4.27',
-                        '-path='+str(HERE/'vanilla'),'-out='+str(HERE/'exports'),str(source)],
-                       check=True,capture_output=True,timeout=90)
-    for texture in ['diffuse','masks_color','masks_shade','masks_other','masks_physical']:
-        source=extract('Astro/Content/Textures/palette_exo_suit_'+texture,as_json=False)
-        subprocess.run([str(UMODEL),'-export','-game=ue4.27','-path='+str(HERE/'vanilla'),
-                        '-out='+str(HERE/'exports'),str(source)],check=True,capture_output=True,timeout=90)
+        source = extract(asset, as_json=False)
+        subprocess.run(
+            [
+                str(UMODEL),
+                "-export",
+                "-gltf",
+                "-noanim",
+                "-notex",
+                "-game=ue4.27",
+                "-path=" + str(HERE / "vanilla"),
+                "-out=" + str(HERE / "exports"),
+                str(source),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
+    # Triangle indices are tied to this game mesh. Stop if it has changed.
+    manifest = json.loads((HERE / "mesh-parts.json").read_text())
+    mesh = HERE / "vanilla/Astro/Content/Models/backpack_mk2/backpack_mk2.uexp"
+    assert (
+        hashlib.sha256(mesh.read_bytes()).hexdigest() == manifest["mesh_uexp_sha256"]
+    ), "Unsupported base-game mesh; expected Astroneer " + manifest["game_build"]
 
-    # The authored selection map identifies exactly which original triangles to
-    # retain/replace. Reject a different source build before using its indices.
-    manifest=json.loads((HERE/'mesh-parts.json').read_text())
-    mesh=HERE/'vanilla/Astro/Content/Models/backpack_mk2/backpack_mk2.uexp'
-    assert hashlib.sha256(mesh.read_bytes()).hexdigest()==manifest['mesh_uexp_sha256'],'Unsupported base-game mesh; expected Astroneer '+manifest['game_build']
-    (HERE/'native-connected-parts.json').write_text(json.dumps(manifest['parts']))
 
-if __name__=='__main__':prepare()
+if __name__ == "__main__":
+    prepare()

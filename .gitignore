@@ -10,4 +10,5 @@ scripts/game-prototype-*/
 scripts/native-connected-parts.json
 
 *.blend[0-9]
-scripts/blender-export/
+build/
+.ruff_cache/
