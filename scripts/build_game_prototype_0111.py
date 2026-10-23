@@ -3,9 +3,9 @@ No original Backpack16 PAK, JSON, functions, or components are build inputs.
 """
 import base64,copy,hashlib,json,subprocess,uuid
 from investigate import GUI,REPAK,ENV,extract
-from native_revision_0110 import HERE,OUT,PKG,build_meshes
-from visual_components_0110 import add_visual_components
-from catalog_startup_0110 import patch_catalog_startup
+from native_revision_0111 import HERE,OUT,PKG,build_meshes
+from visual_components_0111 import add_visual_components
+from catalog_startup_0111 import patch_catalog_startup
 
 STAGE=OUT/'staging'
 def ps(e):return {p['Name']:p for p in e.get('Data',[])}
@@ -82,7 +82,7 @@ def configure(d,slot_names,front,corpse=False):
         location(d,e,[target_x-origin['X'],y-origin['Y'],z-origin['Z']])
         # The visible socket is independent; only main attached items shrink.
         assert all(abs(float(xyz(ps(e)['RelativeScale3D'])[k])-.25)<1e-7 for k in 'XYZ')
-        xyz(ps(e)['RelativeScale3D']).update(X=.175,Y=.175,Z=.175)
+        xyz(ps(e)['RelativeScale3D']).update(X=.1875,Y=.1875,Z=.1875)
         setbool(d,e,'SlotVisible',False);setbool(d,e,'bVisible',False)
     for key in ['Power Bar_GEN_VARIABLE']+([] if corpse else ['PowerBarOverlay_GEN_VARIABLE']):
         p=ps(ex[key]);scale=xyz(p['RelativeScale3D']);scale.update(X=.09,Y=.09)
@@ -116,12 +116,12 @@ def build():
         names=add_inventory_slots(d,corpse);configure(d,names,geometry['front_components'],corpse)
         write_asset(d,'Astro/Content/'+asset+'.uasset',asset.rsplit('/',1)[-1])
     catalog=patch_catalog_startup();write_asset(catalog,'Astro/Content/Items/Catalog/BackpackCatalog.uasset','BackpackCatalog')
-    metadata={'schema_version':2,'name':'Backpack Deluxe (test)','mod_id':'CompactBackpack16','author':'yuexr','description':'Sixteen-slot backpack and death retrieval, approved 0.1.10 revision 1 model, 30% smaller main-slot items, Creative-only drone socket, stable visual bounds and catalog startup pose warmup.','version':'0.1.10','game_build':'1.45.1.0','sync':'serverclient'}
+    metadata={'schema_version':2,'name':'Backpack Deluxe (test)','mod_id':'CompactBackpack16','author':'yuexr','description':'Sixteen-slot backpack and death retrieval, approved 0.1.10 revision 1 model, 25% smaller main-slot items, Creative-only drone socket, stable visual bounds and catalog startup pose warmup.','version':'0.1.11','game_build':'1.45.1.0','sync':'serverclient'}
     (STAGE/'metadata.json').write_text(json.dumps(metadata,indent=2))
-    pak=OUT/'000-CompactBackpack16-0.1.10_P.pak'
+    pak=OUT/'000-CompactBackpack16-0.1.11_P.pak'
     subprocess.run([str(REPAK),'pack',str(STAGE),str(pak)],check=True,timeout=120,capture_output=True)
-    report={'version':'0.1.10','vanilla_sources':provenance,'original_Backpack16_required':False,'geometry':geometry,
-            'main_slot_scale':.175,'item_size_multiplier':.7,'native_auxiliaries_unchanged':True,'controls_and_drone':'vanilla transforms and drone geometry; separate mount shares backpack material and native socket UVs',
+    report={'version':'0.1.11','vanilla_sources':provenance,'original_Backpack16_required':False,'geometry':geometry,
+            'main_slot_scale':.1875,'item_size_multiplier':.75,'native_auxiliaries_unchanged':True,'controls_and_drone':'vanilla transforms and drone geometry; separate mount shares backpack material and native socket UVs',
             'installed':False,'gameplay_tested':False,'pak_sha256':hashlib.sha256(pak.read_bytes()).hexdigest()}
     (OUT/'build-report.json').write_text(json.dumps(report,indent=2))
     print('Built',pak)

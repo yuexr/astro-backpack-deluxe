@@ -5,9 +5,9 @@ for added static parts, with separate sections/assets when capacity is exceeded.
 import base64,copy,json
 import numpy as np
 from asset_io import HERE,gltf
-from model_mesh_0110 import load_model
+from model_mesh_0111 import load_model
 
-OUT=HERE/'game-prototype-0.1.10';OUT.mkdir(exist_ok=True)
+OUT=HERE/'game-prototype-0.1.11';OUT.mkdir(exist_ok=True)
 OFF={'position':136048,'tangent':246150,'uv':319542,'index':73944}
 N=9173
 PKG='/Game/Mods/CompactBackpack16/'

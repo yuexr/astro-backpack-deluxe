@@ -1,9 +1,9 @@
 """Independent cooked-asset, native behavior, SCS and geometry verification."""
 import base64,copy,hashlib,json,subprocess,struct
 import numpy as np
-from native_revision_0110 import HERE,OUT,gltf
-from investigate import REPAK,GUI,UMODEL,ENV
-from build_game_prototype_0110 import ps,xyz,es,prop
+from native_revision_0111 import HERE,OUT,gltf
+from investigate import REPAK,GUI,ENV,UMODEL
+from build_game_prototype_0111 import ps,xyz,es,prop
 STAGE=OUT/'staging'
 
 def norm(x):
@@ -78,7 +78,7 @@ for label,path,corpse in [('BackpackRail','Items/BackpackRail',False),('AstroCor
     positions[label]=[]
     for var in names:
         e=ex[var+'_GEN_VARIABLE'];p=ps(e)
-        assert np.allclose(vec(p['RelativeScale3D']),[.175]*3,atol=1e-7,rtol=0)
+        assert np.allclose(vec(p['RelativeScale3D']),[.1875]*3,atol=1e-7,rtol=0)
         assert not p['bVisible']['Value'] and not p['SlotVisible']['Value']
         positions[label].append(vec(p['RelativeLocation'])+origin)
         component_id=d['Exports'].index(e)+1
@@ -199,7 +199,7 @@ for label in ['backpack_mk2','backpack_socket','drone_socket']+front_labels:
         info=json.loads((OUT/'socket-source.json').read_text());sel=np.array(info['triangles'])
         for k in ['TEXCOORD_0','NORMAL','TANGENT','JOINTS_0','WEIGHTS_0']:assert np.array_equal(a[k][indices[sel]],oa[k][oi[sel]])
 
-pak=OUT/'000-CompactBackpack16-0.1.10_P.pak'
+pak=OUT/'000-CompactBackpack16-0.1.11_P.pak'
 listing=subprocess.check_output([str(REPAK),'list',str(pak)],text=True).splitlines()
 expected=sorted(p.relative_to(STAGE).as_posix() for p in STAGE.rglob('*') if p.is_file())
 assert sorted(listing)==expected and len(listing)==2*(6+len(front_labels))+1
@@ -207,13 +207,13 @@ for member in listing:
     data=subprocess.check_output([str(REPAK),'get',str(pak),member]);assert data==(STAGE/member).read_bytes(),member
 report=json.loads((OUT/'build-report.json').read_text());assert hashlib.sha256(pak.read_bytes()).hexdigest()==report['pak_sha256']
 report['offline_checks']=[f'{len(assets)} assets reparsed including function trailers and dependencies','vanilla bytecode preserved except declared changes',
- 'sixteen unique slot references and registered components on live and death backpacks','70% main items (.175 component scale); auxiliary data untouched',
+ 'sixteen unique slot references and registered components on live and death backpacks','75% main items (.1875 component scale); auxiliary data untouched',
  'matching live and corpse attachment positions','original control and printer transforms retained','material helper bytecode and offsets verified',
  'cooked geometry matches approved 0.1.10-r1 GLB; original body UVs preserved','new visible meshes root weighted and collision disabled','all 2380 animated native triangles preserved',
  'actual native drone mount shape and normals retained; its rim uses main socket palette UV and material',
  f'{len(listing)} PAK entries independently extracted and byte matched']
 report['resource_order']=resource_order
-from verify_behaviors_0110 import check_behaviors
+from verify_behaviors_0111 import check_behaviors
 report['offline_checks'].extend(check_behaviors(assets,geometry))
 (OUT/'build-report.json').write_text(json.dumps(report,indent=2))
-print('All 0.1.10 offline checks passed. In-game appearance, item behavior, save/load and death retrieval still need testing.')
+print('All 0.1.11 offline checks passed. In-game appearance, item behavior, save/load and death retrieval still need testing.')

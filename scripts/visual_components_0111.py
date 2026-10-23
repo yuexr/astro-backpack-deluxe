@@ -1,9 +1,9 @@
 """Our visual-component and material-sharing helpers for the vanilla-based build."""
 import base64,copy,json,uuid
-from native_revision_0110 import HERE,OUT,PKG
+from native_revision_0111 import HERE,OUT,PKG
 
 def add_visual_components(d,front_parts,corpse=False):
-    from build_game_prototype_0110 import ps,xyz,location
+    from build_game_prototype_0111 import ps,xyz,location
     def name(n):
         if n not in d['NameMap']:d['NameMap'].append(n)
         return n

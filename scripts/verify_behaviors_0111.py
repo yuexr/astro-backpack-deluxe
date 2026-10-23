@@ -1,8 +1,8 @@
 """Offline checks for generated VM guards, startup lifecycle, and frozen geometry."""
 import copy,hashlib,json,struct
 from pathlib import Path
-from catalog_startup_0110 import kismet_size,op_type
-from native_revision_0110 import HERE,OUT
+from catalog_startup_0111 import kismet_size,op_type
+from native_revision_0111 import HERE,OUT
 
 
 class VM:
@@ -33,6 +33,9 @@ class VM:
             name=self.d['Imports'][-node-1]['ObjectName']
             if name=='IsValid':return args[0] is not None
             if name=='GetFullyClosed':return obj['fully_closed']
+            if name=='IsVisible':return obj['visible']
+            if name=='WasRecentlyRendered':return self.actor['rendered']
+            if name=='SetComponentTickEnabled':obj['tick_enabled']=args[0];return
             if name=='K2_SetTimer':self.timers[args[1]]={'seconds':args[2],'loop':args[3]};return
             if name=='K2_ClearTimer':self.timers.pop(args[1],None);return
             if name=='IsCreativeMode':return self.actor['creative']
@@ -92,28 +95,42 @@ def check_behaviors(assets,geometry):
     for n,e in ex.items():
         if n.startswith('CB_'):
             assert sum(map(kismet_size,e['ScriptBytecode']))==e['ScriptBytecodeSize']
-    def fresh():return {'CB_CatalogWarmingUp':True,'SkeletalMesh':{'bNoSkeletonUpdate':True},'CrackableActorComponent':{'fully_closed':True}}
-    # Ordinary startup: allow evaluation, undo premature close freeze, freeze once settled.
+    def fresh(visible=False,rendered=False):return {'CB_CatalogWarmingUp':True,'CB_CatalogWarmupStarted':False,'rendered':rendered,'SkeletalMesh':{'bNoSkeletonUpdate':True,'visible':visible,'tick_enabled':False},'CrackableActorComponent':{'fully_closed':True}}
+    # Loading can last arbitrarily long: there is no finish deadline while the
+    # active catalog has not actually appeared in a rendered frame.
     actor=fresh();vm=VM(d,actor);vm.run('CB_StartCatalogWarmup')
-    assert not actor['SkeletalMesh']['bNoSkeletonUpdate']
+    assert vm.timers=={'CB_TryStartCatalogWarmup':{'seconds':.25,'loop':True}}
+    for _ in range(200):vm.run('CB_TryStartCatalogWarmup')
+    assert actor['CB_CatalogWarmingUp'] and not actor['CB_CatalogWarmupStarted']
+    assert actor['SkeletalMesh']['bNoSkeletonUpdate']
+    actor['SkeletalMesh']['visible']=True;vm.run('CB_TryStartCatalogWarmup')
+    assert not actor['CB_CatalogWarmupStarted'] and 'CB_FinishCatalogWarmup' not in vm.timers
+    actor['rendered']=True;vm.run('CB_TryStartCatalogWarmup')
+    assert actor['CB_CatalogWarmupStarted'] and not actor['SkeletalMesh']['bNoSkeletonUpdate']
+    assert actor['SkeletalMesh']['tick_enabled']
     assert vm.timers=={'CB_FinishCatalogWarmup':{'seconds':1.,'loop':False}}
     actor['SkeletalMesh']['bNoSkeletonUpdate']=True;vm.run('CB_KeepCatalogStartupPoseUpdating')
     assert not actor['SkeletalMesh']['bNoSkeletonUpdate']
     vm.run('CB_CancelCatalogWarmupIfOpened',[False]);assert vm.timers
     vm.run('CB_FinishCatalogWarmup');assert actor['SkeletalMesh']['bNoSkeletonUpdate'] and not actor['CB_CatalogWarmingUp']
     actor['SkeletalMesh']['bNoSkeletonUpdate']=True;vm.run('CB_KeepCatalogStartupPoseUpdating');assert actor['SkeletalMesh']['bNoSkeletonUpdate']
-    # Opening during warmup cancels the timer and leaves native animation controls in charge.
-    actor=fresh();vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');vm.run('CB_CancelCatalogWarmupIfOpened',[True])
-    assert not vm.timers and not actor['CB_CatalogWarmingUp']
-    actor['SkeletalMesh']['bNoSkeletonUpdate']=True;vm.run('CB_KeepCatalogStartupPoseUpdating');assert actor['SkeletalMesh']['bNoSkeletonUpdate']
-    actor=fresh();vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');actor['CrackableActorComponent']['fully_closed']=False;vm.run('CB_FinishCatalogWarmup')
+    # Explicit initialization does not rely on a derived Blueprint inheriting
+    # the new field's CDO default value.
+    actor=fresh(True,True);actor['CB_CatalogWarmingUp']=False;vm=VM(d,actor);vm.run('CB_StartCatalogWarmup')
+    assert actor['CB_CatalogWarmingUp'] and actor['CB_CatalogWarmupStarted']
+    # Opening before a first render or during warmup cancels both timers and
+    # leaves the original catalog controls/animations in charge.
+    for visible,rendered in [(False,False),(True,True)]:
+        actor=fresh(visible,rendered);vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');vm.run('CB_CancelCatalogWarmupIfOpened',[True])
+        assert not vm.timers and not actor['CB_CatalogWarmingUp']
+        actor['SkeletalMesh']['bNoSkeletonUpdate']=True;vm.run('CB_KeepCatalogStartupPoseUpdating');assert actor['SkeletalMesh']['bNoSkeletonUpdate']
+    actor=fresh(True,True);vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');actor['CrackableActorComponent']['fully_closed']=False;vm.run('CB_FinishCatalogWarmup')
     assert not actor['SkeletalMesh']['bNoSkeletonUpdate']
-    # Uninitialized or missing skeletal components fail closed, without a crash.
-    actor=fresh();actor['SkeletalMesh']=None;vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');vm.run('CB_FinishCatalogWarmup')
+    actor=fresh();actor['SkeletalMesh']=None;vm=VM(d,actor);vm.run('CB_StartCatalogWarmup');vm.run('CB_TryStartCatalogWarmup');vm.run('CB_FinishCatalogWarmup')
 
     def read_glb(path):
         b=path.read_bytes();n=struct.unpack_from('<I',b,12)[0];return json.loads(b[20:20+n]),b[20+n:]
-    from model_mesh_0110 import MODEL,INFO
+    from model_mesh_0111 import MODEL,INFO
     newdoc,newbin=read_glb(MODEL);reference=json.loads(INFO.read_text())
     # Fingerprints record the approved 0.1.9 geometry and the sole palette-role
     # edit, without needing another release or a private authoring directory.
@@ -127,5 +144,5 @@ def check_behaviors(assets,geometry):
     assert superclass<0 and creative['Imports'][-superclass-1]['ObjectName']=='BackpackCatalog_C'
     return ['Creative-only visibility helper tested through mode changes and real mesh bounds parent verified',
         'native catalog behavior preserved except startup hooks; inherited by Creative catalog',
-        'catalog warmup lifecycle checked including early opening, closing, missing mesh and idle restoration',
+        'catalog first-render warmup checked through long loading, visibility, early opening, missing mesh and idle restoration',
         'frozen base geometry and normals identical; only lower accent palette binding changed']

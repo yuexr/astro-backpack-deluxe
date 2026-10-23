@@ -1,4 +1,4 @@
-"""One-time closed-pose warmup; preserve native interaction and idle-freeze logic."""
+"""Warm the first visible catalog pose, with no deadline during world loading."""
 import base64,copy,json
 from investigate import extract
 
@@ -22,7 +22,7 @@ def kismet_size(x):
 
 
 def patch_catalog_startup():
-    from build_game_prototype_0110 import ps,prop
+    from build_game_prototype_0111 import ps,prop
     d=extract('Astro/Content/Items/Catalog/BackpackCatalog')
     def name(n):
         if n not in d['NameMap']:d['NameMap'].append(n)
@@ -45,15 +45,22 @@ def patch_catalog_startup():
     field=copy.deepcopy(next(p for p in cls['LoadedProperties'] if p['Name']=='ExtendPanel'))
     field.update(Name=name('CB_CatalogWarmingUp'),PropertyFlags='CPF_None');cls['LoadedProperties'].append(field)
     cdo['Data'].append(prop(d,'Bool','CB_CatalogWarmingUp',True))
+    started_field=copy.deepcopy(field);started_field['Name']=name('CB_CatalogWarmupStarted');cls['LoadedProperties'].append(started_field)
+    cdo['Data'].append(prop(d,'Bool','CB_CatalogWarmupStarted',False))
     eng=imp('/Script/Engine',0,'Package');astro=imp('/Script/Astro',0,'Package')
     skel=imp('SkeletalMeshComponent',eng);control=imp('ControlPanel',astro);crack=imp('CrackableActorComponent',astro)
     system=imp('KismetSystemLibrary',eng);valid=imp('IsValid',system,'Function')
     set_timer=imp('K2_SetTimer',system,'Function');clear_timer=imp('K2_ClearTimer',system,'Function')
     fully_closed=imp('GetFullyClosed',crack,'Function')
+    actor_class=imp('Actor',eng);recent=imp('WasRecentlyRendered',actor_class,'Function')
+    scene=imp('SceneComponent',eng);visible=imp('IsVisible',scene,'Function')
+    actor_component=imp('ActorComponent',eng);tick=imp('SetComponentTickEnabled',actor_component,'Function')
     mesh=lambda:var('SkeletalMesh',control)
     component=lambda:var('CrackableActorComponent',control)
     freeze=lambda state:assign(ctx(mesh(),var('bNoSkeletonUpdate',skel)),ex('EX_True' if state else 'EX_False'))
     active=lambda:var('CB_CatalogWarmingUp')
+    started=lambda:var('CB_CatalogWarmupStarted')
+    stop_poll=lambda:call(clear_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_TryStartCatalogWarmup'))
     begin=next(e for e in d['Exports'] if e['ObjectName']=='ReceiveBeginPlay')
     closed_handler=next(e for e in d['Exports'] if e['ObjectName']=='BndEvt__CrackableActorComponent_K2Node_ComponentBoundEvent_0_OnCrackedStateChanged__DelegateSignature')
     opened_handler=next(e for e in d['Exports'] if e['ObjectName']=='BndEvt__CrackableActorComponent_K2Node_ComponentBoundEvent_1_OnCrackedStateChanged__DelegateSignature')
@@ -68,15 +75,19 @@ def patch_catalog_startup():
         body.extend([ex('EX_Return',ReturnExpression=ex('EX_Nothing')),ex('EX_EndOfScript')])
         fn.update(ScriptBytecode=body,ScriptBytecodeSize=sum(map(kismet_size,body)))
         assert base64.b64decode(fn['Extras'])==b'\0'*8
-        fn['CreateBeforeSerializationDependencies']=[cid,valid,set_timer,clear_timer,fully_closed,control,skel]
+        fn['CreateBeforeSerializationDependencies']=[cid,valid,set_timer,clear_timer,fully_closed,control,skel,recent,visible,tick]
         fn['SerializationBeforeSerializationDependencies']=[];fn['CreateBeforeCreateDependencies']=[cid]
         assert append(fn)==fid
         cls['FuncMap'].append([name(n),fid]);cls['Children'].insert(0,fid);cls['CreateBeforeSerializationDependencies'].append(fid)
         return fid
-    keep=function('CB_KeepCatalogStartupPoseUpdating',lambda _: [guard(active()),guard(call(valid,mesh())),freeze(False)])
-    finish=function('CB_FinishCatalogWarmup',lambda _: [assign(active(),ex('EX_False')),guard(call(valid,component())),guard(ctx(component(),call(fully_closed))),guard(call(valid,mesh())),freeze(True)])
-    start=function('CB_StartCatalogWarmup',lambda _: [call(keep,local=True),call(set_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_FinishCatalogWarmup'),ex('EX_FloatConst',Value=1.0),ex('EX_False'),ex('EX_FloatConst',Value=0.),ex('EX_FloatConst',Value=0.))])
-    cancel=function('CB_CancelCatalogWarmupIfOpened',lambda fid: [guard(ex('EX_LocalVariable',Variable=ptr(fid,'Opened'))),assign(active(),ex('EX_False')),call(clear_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_FinishCatalogWarmup'))],param=True)
+    keep=function('CB_KeepCatalogStartupPoseUpdating',lambda _: [guard(active()),guard(started()),guard(call(valid,mesh())),freeze(False)])
+    finish=function('CB_FinishCatalogWarmup',lambda _: [assign(active(),ex('EX_False')),stop_poll(),guard(call(valid,component())),guard(ctx(component(),call(fully_closed))),guard(call(valid,mesh())),freeze(True)])
+    attempt=function('CB_TryStartCatalogWarmup',lambda _: [guard(active()),guard(call(valid,mesh())),guard(ctx(mesh(),call(visible))),guard(call(recent,ex('EX_FloatConst',Value=.25))),
+        assign(started(),ex('EX_True')),call(keep,local=True),ctx(mesh(),call(tick,ex('EX_True'))),stop_poll(),
+        call(set_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_FinishCatalogWarmup'),ex('EX_FloatConst',Value=1.),ex('EX_False'),ex('EX_FloatConst',Value=0.),ex('EX_FloatConst',Value=0.))])
+    start=function('CB_StartCatalogWarmup',lambda _: [assign(active(),ex('EX_True')),assign(started(),ex('EX_False')),
+        call(set_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_TryStartCatalogWarmup'),ex('EX_FloatConst',Value=.25),ex('EX_True'),ex('EX_FloatConst',Value=0.),ex('EX_FloatConst',Value=0.)),call(attempt,local=True)])
+    cancel=function('CB_CancelCatalogWarmupIfOpened',lambda fid: [guard(ex('EX_LocalVariable',Variable=ptr(fid,'Opened'))),assign(active(),ex('EX_False')),stop_poll(),call(clear_timer,ex('EX_Self'),ex('EX_StringConst',Value='CB_FinishCatalogWarmup'))],param=True)
     def post(wrapper,expr,dependency):
         code=wrapper['ScriptBytecode'];i=next(i for i,x in enumerate(code) if op_type(x)=='EX_Return');code.insert(i,expr)
         wrapper['ScriptBytecodeSize']+=kismet_size(expr);wrapper['CreateBeforeSerializationDependencies'].append(dependency)
