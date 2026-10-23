@@ -1,9 +1,9 @@
 """Our visual-component and material-sharing helpers for the vanilla-based build."""
 import base64,copy,json,uuid
-from native_revision_019 import HERE,OUT,PKG
+from native_revision_0110 import HERE,OUT,PKG
 
 def add_visual_components(d,front_parts,corpse=False):
-    from build_game_prototype_019 import ps,xyz,location
+    from build_game_prototype_0110 import ps,xyz,location
     def name(n):
         if n not in d['NameMap']:d['NameMap'].append(n)
         return n
@@ -57,9 +57,10 @@ def add_visual_components(d,front_parts,corpse=False):
             # Same transform as the native auto-created slot_t1b_i visual:
             # slot transform plus its local Z=3 offset, scaled by .25.
             slot=next(x for x in d['Exports'] if x['ObjectName']=='Creative Drone Slot_GEN_VARIABLE')
-            sp=ps(slot);loc=[float(xyz(sp['RelativeLocation'])[k]) for k in 'XYZ'];loc[1]-=.75
+            sp=ps(slot);body_origin=xyz(ps(mesh)['RelativeLocation']);loc=[float(xyz(sp['RelativeLocation'])[k])-float(body_origin[k]) for k in 'XYZ'];loc[1]-=.75
             location(d,e,loc);e['Data'].append(copy.deepcopy(sp['RelativeRotation']))
-            component_parent=next(x for x in d['Exports'] if ps(x).get('InternalVariableName',{}).get('Value')=='Root')
+            component_parent=mesh_node
+            e['Data'].append(prop('Bool','bVisible',False))
         else:location(d,e,[centre[i]-origin[k] for i,k in enumerate('XYZ')])
         e['CreateBeforeSerializationDependencies']=[asset]
         comp=append(e)
@@ -78,12 +79,14 @@ def add_visual_components(d,front_parts,corpse=False):
     engine=imp('/Script/Engine',0,'Package');primitive=imp('PrimitiveComponent',engine)
     get=imp('GetMaterial',primitive,'Function');set_=imp('SetMaterial',primitive,'Function')
     system=imp('KismetSystemLibrary',engine);valid=imp('IsValid',system,'Function')
+    scene=imp('SceneComponent',engine);visible=imp('SetVisibility',scene,'Function')
+    astro=imp('/Script/Astro',0,'Package');statics=imp('AstroStatics',astro);creative=imp('IsCreativeMode',statics,'Function')
     def ex(t,**kw):return {'$type':'UAssetAPI.Kismet.Bytecode.Expressions.'+t+', UAssetAPI',**kw}
     def ptr(owner,n=None):return {'$type':'UAssetAPI.Kismet.Bytecode.KismetPropertyPointer, UAssetAPI','New':{'$type':'UAssetAPI.UnrealTypes.FFieldPath, UAssetAPI','Path':[name(n)] if n else [],'ResolvedOwner':owner}}
     def var(n):return ex('EX_InstanceVariable',Variable=ptr(cls_id,n))
     def size(e):
         t=e['$type'].split('.')[-1].split(',')[0]
-        if t in ['EX_IntZero','EX_Nothing','EX_EndOfScript']:return 1
+        if t in ['EX_IntZero','EX_Nothing','EX_EndOfScript','EX_Self','EX_True','EX_False']:return 1
         if t=='EX_InstanceVariable':return 9
         if t in ['EX_FinalFunction','EX_LocalFinalFunction']:return 10+sum(map(size,e['Parameters']))
         if t=='EX_Context':return 13+size(e['ObjectExpression'])+size(e['ContextExpression'])
@@ -96,6 +99,8 @@ def add_visual_components(d,front_parts,corpse=False):
     for variable in components:
         body.append(ex('EX_JumpIfNot',CodeOffset=0,BooleanExpression=call(valid,var(variable))))
         body.append(ctx(var(variable),call(set_,ex('EX_IntZero'),ctx(var(mesh_name),call(get,ex('EX_IntZero'))))))
+    if not corpse:
+        body.append(ctx(var('NativeDroneSocket'),call(visible,call(creative,ex('EX_Self')),ex('EX_False'))))
     end=sum(map(size,body))
     for e in body:
         if 'CodeOffset' in e:e['CodeOffset']=end
@@ -103,7 +108,7 @@ def add_visual_components(d,front_parts,corpse=False):
     begin=next(e for e in d['Exports'] if e['ObjectName']=='ReceiveBeginPlay')
     fn=copy.deepcopy(begin);fn.update(ObjectName=name('CB_ShareSocketMaterial'),SerialSize=0,SerialOffset=0,SuperStruct=0,SuperIndex=0,LoadedProperties=[],ScriptBytecode=body,ScriptBytecodeSize=sum(map(size,body)),FunctionFlags='FUNC_Public, FUNC_BlueprintCallable')
     assert base64.b64decode(fn['Extras'])==b'\0'*8
-    fn['CreateBeforeSerializationDependencies']=[cls_id,get,set_,valid]
+    fn['CreateBeforeSerializationDependencies']=[cls_id,get,set_,valid,visible,creative]
     fn['SerializationBeforeSerializationDependencies']=[];fn['CreateBeforeCreateDependencies']=[cls_id]
     fn_id=append(fn);cls['FuncMap'].append([name('CB_ShareSocketMaterial'),fn_id]);cls['Children'].insert(0,fn_id);cls['CreateBeforeSerializationDependencies'].append(fn_id)
     for key in ['ReceiveBeginPlay','ReceiveTick']:

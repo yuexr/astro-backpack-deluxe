@@ -1,9 +1,9 @@
 """Independent cooked-asset, native behavior, SCS and geometry verification."""
 import base64,copy,hashlib,json,subprocess,struct
 import numpy as np
-from native_revision_019 import HERE,OUT,gltf
+from native_revision_0110 import HERE,OUT,gltf
 from investigate import REPAK,GUI,UMODEL,ENV
-from build_game_prototype_019 import ps,xyz,es,prop
+from build_game_prototype_0110 import ps,xyz,es,prop
 STAGE=OUT/'staging'
 
 def norm(x):
@@ -22,7 +22,7 @@ def walk(x):
 def type_(e):return e.get('$type','').split('.')[-1].split(',')[0]
 def size(e):
     t=type_(e)
-    if t in ['EX_IntZero','EX_Nothing','EX_EndOfScript']:return 1
+    if t in ['EX_IntZero','EX_Nothing','EX_EndOfScript','EX_Self','EX_True','EX_False']:return 1
     if t in ['EX_InstanceVariable','EX_LocalVariable']:return 9
     if t=='EX_NameConst':return 13
     if t in ['EX_FinalFunction','EX_LocalFinalFunction']:return 10+sum(map(size,e['Parameters']))
@@ -78,7 +78,7 @@ for label,path,corpse in [('BackpackRail','Items/BackpackRail',False),('AstroCor
     positions[label]=[]
     for var in names:
         e=ex[var+'_GEN_VARIABLE'];p=ps(e)
-        assert np.allclose(vec(p['RelativeScale3D']),[.20]*3,atol=1e-7,rtol=0)
+        assert np.allclose(vec(p['RelativeScale3D']),[.175]*3,atol=1e-7,rtol=0)
         assert not p['bVisible']['Value'] and not p['SlotVisible']['Value']
         positions[label].append(vec(p['RelativeLocation'])+origin)
         component_id=d['Exports'].index(e)+1
@@ -117,21 +117,23 @@ for label,path,corpse in [('BackpackRail','Items/BackpackRail',False),('AstroCor
             assert ex[n]['Data']==old[n]['Data'],n
     fn=ex['CB_ShareSocketMaterial'];assert sum(map(size,fn['ScriptBytecode']))==fn['ScriptBytecodeSize']
     assert all(x['CodeOffset']==fn['ScriptBytecodeSize']-3 for x in fn['ScriptBytecode'] if 'CodeOffset' in x)
-    assert sum(type_(x)=='EX_Context' for x in fn['ScriptBytecode'])==16+len(front_labels)+(0 if corpse else 1)
+    assert sum(type_(x)=='EX_Context' for x in fn['ScriptBytecode'])==16+len(front_labels)+(0 if corpse else 2)
     if not corpse:
         comp=ex['NativeDroneSocket_GEN_VARIABLE'];p=ps(comp)
         native_slot=ps(old['Creative Drone Slot_GEN_VARIABLE'])
         assert np.allclose(vec(p['RelativeScale3D']),.25)
         assert p['RelativeRotation']==native_slot['RelativeRotation']
-        expected_loc=vec(native_slot['RelativeLocation']);expected_loc[1]-=.75
+        expected_loc=vec(native_slot['RelativeLocation'])-vec(ps(old['backpack_mk2_GEN_VARIABLE'])['RelativeLocation']);expected_loc[1]-=.75
         assert np.allclose(vec(p['RelativeLocation']),expected_loc,atol=1e-6)
         ci=d['Exports'].index(comp)+1
         node=next(x for x in d['Exports'] if ps(x).get('ComponentTemplate',{}).get('Value')==ci)
         ni=d['Exports'].index(node)+1
-        rootnode=next(x for x in d['Exports'] if ps(x).get('InternalVariableName',{}).get('Value')=='Root')
+        rootnode=next(x for x in d['Exports'] if ps(x).get('InternalVariableName',{}).get('Value')=='backpack_mk2')
         assert any(x['Value']==ni for x in ps(rootnode)['ChildNodes']['Value'])
         calls=[x for x in fn['ScriptBytecode'] if type_(x)=='EX_Context']
         assert calls[-1]['ObjectExpression']['Variable']['New']['Path']==['NativeDroneSocket']
+        assert not p['bVisible']['Value']
+        assert p['bUseAttachParentBound']['Value']
     for n in [f'NativeBackpackSocket{i}'  for i in range(1,17)]+['Compact_'+label for label in front_labels]:
         component=ex[n+'_GEN_VARIABLE'];p=ps(component)
         assert np.allclose(vec(p['RelativeScale3D']),.88 if n.startswith('Native') else 1.)
@@ -197,19 +199,21 @@ for label in ['backpack_mk2','backpack_socket','drone_socket']+front_labels:
         info=json.loads((OUT/'socket-source.json').read_text());sel=np.array(info['triangles'])
         for k in ['TEXCOORD_0','NORMAL','TANGENT','JOINTS_0','WEIGHTS_0']:assert np.array_equal(a[k][indices[sel]],oa[k][oi[sel]])
 
-pak=OUT/'000-CompactBackpack16-0.1.9_P.pak'
+pak=OUT/'000-CompactBackpack16-0.1.10_P.pak'
 listing=subprocess.check_output([str(REPAK),'list',str(pak)],text=True).splitlines()
 expected=sorted(p.relative_to(STAGE).as_posix() for p in STAGE.rglob('*') if p.is_file())
-assert sorted(listing)==expected and len(listing)==2*(5+len(front_labels))+1
+assert sorted(listing)==expected and len(listing)==2*(6+len(front_labels))+1
 for member in listing:
     data=subprocess.check_output([str(REPAK),'get',str(pak),member]);assert data==(STAGE/member).read_bytes(),member
 report=json.loads((OUT/'build-report.json').read_text());assert hashlib.sha256(pak.read_bytes()).hexdigest()==report['pak_sha256']
 report['offline_checks']=[f'{len(assets)} assets reparsed including function trailers and dependencies','vanilla bytecode preserved except declared changes',
- 'sixteen unique slot references and registered components on live and death backpacks','20% smaller main items (.20 component scale); auxiliary data untouched',
+ 'sixteen unique slot references and registered components on live and death backpacks','70% main items (.175 component scale); auxiliary data untouched',
  'matching live and corpse attachment positions','original control and printer transforms retained','material helper bytecode and offsets verified',
- 'cooked geometry matches approved 0.1.9-r1 GLB; original body UVs preserved','new visible meshes root weighted and collision disabled','all 2380 animated native triangles preserved',
+ 'cooked geometry matches approved 0.1.10-r1 GLB; original body UVs preserved','new visible meshes root weighted and collision disabled','all 2380 animated native triangles preserved',
  'actual native drone mount shape and normals retained; its rim uses main socket palette UV and material',
  f'{len(listing)} PAK entries independently extracted and byte matched']
 report['resource_order']=resource_order
+from verify_behaviors_0110 import check_behaviors
+report['offline_checks'].extend(check_behaviors(assets,geometry))
 (OUT/'build-report.json').write_text(json.dumps(report,indent=2))
-print('All 0.1.9 offline checks passed. In-game appearance, item behavior, save/load and death retrieval still need testing.')
+print('All 0.1.10 offline checks passed. In-game appearance, item behavior, save/load and death retrieval still need testing.')

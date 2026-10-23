@@ -7,7 +7,7 @@ from investigate import UMODEL,extract
 def prepare():
     # Read just the input mesh/skeleton, blueprint sources and atlas textures.
     # -notex prevents UE Viewer from resolving unrelated material dependencies.
-    for asset in ['Models/backpack_mk2/backpack_mk2','Items/BackpackRail','Character/AstroCorpse']:
+    for asset in ['Models/backpack_mk2/backpack_mk2','Items/BackpackRail','Character/AstroCorpse','Items/Catalog/BackpackCatalog','Items/Catalog/BackpackCatalog_Creative']:
         extract('Astro/Content/'+asset)
     extract('Astro/Content/Models/backpack_mk2/backpack_mk2_Skeleton',as_json=False)
     meshes=['Astro/Content/Models/backpack_mk2/backpack_mk2','Engine/Content/BasicShapes/Cylinder','Astro/Content/Slots/Content/new/slot_t1b_i']

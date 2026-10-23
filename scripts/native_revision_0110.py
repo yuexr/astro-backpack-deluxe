@@ -1,13 +1,13 @@
-"""Cook approved 0.1.9 revision 1 geometry into private native-material skeletal mesh assets.
+"""Cook approved 0.1.10 revision 1 geometry into private native-material skeletal mesh assets.
 Retain the original skeletal buffer layout and use only root-weighted vertices
 for added static parts, with separate sections/assets when capacity is exceeded.
 """
 import base64,copy,json
 import numpy as np
 from asset_io import HERE,gltf
-from model_mesh_019 import load_model
+from model_mesh_0110 import load_model
 
-OUT=HERE/'game-prototype-0.1.9';OUT.mkdir(exist_ok=True)
+OUT=HERE/'game-prototype-0.1.10';OUT.mkdir(exist_ok=True)
 OFF={'position':136048,'tangent':246150,'uv':319542,'index':73944}
 N=9173
 PKG='/Game/Mods/CompactBackpack16/'
@@ -31,7 +31,7 @@ def build_meshes():
     original=source();raw=bytearray(base64.b64decode(original['Exports'][0]['Extras']))
     assert np.array_equal(np.frombuffer(raw,'<u2',count=ids.size,offset=OFF['index']).reshape(-1,3),ids)
     assert np.allclose(np.frombuffer(raw,'<f4',count=N*3,offset=OFF['position']).reshape(-1,3),p,atol=1e-4)
-    result={};report={'approved_model':'0.1.9-r1','assets':{},'atlas_uv':{},
+    result={};report={'approved_model':'0.1.10-r1','assets':{},'atlas_uv':{},
                      'socket_centre_native_x':float(ns['socket_centre_x']),
                      'battery_centre_native_x':-13.8+ns['BATTERY_BACK_SHIFT'],
                      'approved_model_sha256':ns['approved_model_sha256']}
