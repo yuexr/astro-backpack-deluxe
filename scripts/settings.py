@@ -3,7 +3,7 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "0.2.1"
+VERSION = "0.2.2"
 GAME_BUILD = "1.45.1.0"
 ITEM_SIZE_MULTIPLIER = 0.8
 MAIN_SLOT_SCALE = 0.25 * ITEM_SIZE_MULTIPLIER

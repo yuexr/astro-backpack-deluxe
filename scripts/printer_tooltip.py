@@ -421,7 +421,9 @@ def patch_backpack(document):
     gate["AssignmentExpression"] = editor.call(
         imports["BooleanAND"],
         original,
-        editor.call(imports["Not_PreBool"], editor.var(HIDDEN), math=True),
+        editor.call(
+            imports["Not_PreBool"], editor.call(getter_id, local=True), math=True
+        ),
         math=True,
     )
     replace_instruction(printer_view, 47, gate)
@@ -437,10 +439,19 @@ def patch_backpack(document):
             editor.call(printer_view_id, local=True),
         ],
     )
+    from printer_preferences import patch_preferences
+
+    patch_preferences(document, HIDDEN, GET_HIDDEN, TOGGLE)
 
 
 def build_printer_assets():
+    from printer_preferences import ASSET, preferences_asset
+
     return {
+        ASSET: (
+            preferences_asset(),
+            "Astro/Content/Mods/CompactBackpack16/" + ASSET + ".uasset",
+        ),
         "PrinterEyeMesh": (
             info_mesh(),
             "Astro/Content/Mods/CompactBackpack16/PrinterEyeMesh.uasset",

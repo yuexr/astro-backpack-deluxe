@@ -15,11 +15,12 @@ from verify_behaviors import VM
 
 class PrinterVM(VM):
     def run(self, name, args=()):
-        if name == GET_HIDDEN:
-            getter = next(e for e in self.d["Exports"] if e["ObjectName"] == GET_HIDDEN)
-            return self.eval(
-                getter["ScriptBytecode"][0]["ReturnExpression"], self.actor, {}
-            )
+        # Existing printer checks isolate the visual toggle from persistence;
+        # verify_preferences exercises the save/load helpers and the getter.
+        from printer_preferences import LOAD, SAVE
+
+        if name in [LOAD, SAVE]:
+            return
         return super().run(name, args)
 
     def native_view(self):

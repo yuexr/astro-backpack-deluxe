@@ -111,7 +111,7 @@ class VM:
         for x in e["ScriptBytecode"]:
             t = op_type(x)
             if t == "EX_Return":
-                return
+                return self.eval(x["ReturnExpression"], self.actor, local)
             if t == "EX_JumpIfNot":
                 assert x["CodeOffset"] == e["ScriptBytecodeSize"] - 3
                 if not self.eval(x["BooleanExpression"], self.actor, local):

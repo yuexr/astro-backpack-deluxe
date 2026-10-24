@@ -11,8 +11,9 @@ DIST.mkdir(exist_ok=True)
 report = json.loads((OUT / "build-report.json").read_text())
 assert report["version"] == VERSION
 assert (
-    len(report["offline_checks"]) == 22 + 4 * int(PANEL_RETRACTION_FIX)
+    len(report["offline_checks"]) == 27 + 4 * int(PANEL_RETRACTION_FIX)
     and report["printer_tooltip_verified"]
+    and report["printer_preference_verified"]
 )
 assert report["panel_retraction_fix"] == PANEL_RETRACTION_FIX
 pak = OUT / PAK_NAME

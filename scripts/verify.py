@@ -154,9 +154,11 @@ for label, path, corpse in [
             assert d["Imports"][-gated["StackNode"] - 1]["ObjectName"] == "BooleanAND"
             hidden = gated["Parameters"][1]
             assert d["Imports"][-hidden["StackNode"] - 1]["ObjectName"] == "Not_PreBool"
-            assert hidden["Parameters"][0]["Variable"]["New"]["Path"] == [
-                "BPM_PrinterTooltipHidden"
-            ]
+            getter = hidden["Parameters"][0]
+            assert type_(getter) == "EX_LocalFinalFunction"
+            assert d["Exports"][getter["StackNode"] - 1]["ObjectName"] == (
+                "BPM_IsPrinterTooltipHidden"
+            )
             native = gated["Parameters"][0]
             delta = kismet_size(gated) - kismet_size(native)
             added += delta
@@ -461,7 +463,7 @@ expected = sorted(
 )
 assert (
     sorted(listing) == expected
-    and len(listing) == 2 * (9 + len(front_labels) + int(PANEL_RETRACTION_FIX)) + 1
+    and len(listing) == 2 * (10 + len(front_labels) + int(PANEL_RETRACTION_FIX)) + 1
 )
 for member in listing:
     data = subprocess.check_output([str(REPAK), "get", str(pak), member])
@@ -492,6 +494,10 @@ report["offline_checks"].extend(check_printer(assets))
 from verify_panel_retraction import check_panel_retraction
 
 report["offline_checks"].extend(check_panel_retraction(assets))
+from verify_preferences import check_preferences
+
+report["offline_checks"].extend(check_preferences(assets))
+report["printer_preference_verified"] = True
 report["printer_tooltip_verified"] = True
 (OUT / "build-report.json").write_text(json.dumps(report, indent=2))
 print(f"{VERSION}: {len(report['offline_checks'])} build checks passed.")
