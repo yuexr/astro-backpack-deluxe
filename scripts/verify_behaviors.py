@@ -161,7 +161,9 @@ def check_behaviors(assets, geometry):
 
     # All vanilla catalog logic remains unchanged; only small post-callback
     # hooks defer its initial skeleton freeze. Creative inherits this class.
-    d = assets["BackpackCatalog"]
+    from panel_retraction import without_hooks
+
+    d = without_hooks(assets["BackpackCatalog"])
     ex = exports(d)
     original = json.loads(
         (HERE / "vanilla/Astro/Content/Items/Catalog/BackpackCatalog.json").read_text()
@@ -177,7 +179,11 @@ def check_behaviors(assets, geometry):
             code = copy.deepcopy(ex[n]["ScriptBytecode"])
             if n in wrappers:
                 i = next(i for i, x in enumerate(code) if op_type(x) == "EX_Return")
-                hook = code.pop(i - 1)
+                hook = code.pop(
+                    0
+                    if n.endswith("_1_OnCrackedStateChanged__DelegateSignature")
+                    else i - 1
+                )
                 assert (
                     op_type(hook) == "EX_LocalFinalFunction"
                     and kismet_size(hook) == wrappers[n]
@@ -189,14 +195,16 @@ def check_behaviors(assets, geometry):
         if e.get("Data") and n != "Default__BackpackCatalog_C":
             assert ex[n]["Data"] == e["Data"], n
     for n, e in ex.items():
-        if n.startswith("CB_"):
+        if n.startswith("BPM_"):
             assert sum(map(kismet_size, e["ScriptBytecode"])) == e["ScriptBytecodeSize"]
 
     def fresh(visible=False, rendered=False):
         return {
-            "CB_CatalogWarmingUp": True,
-            "CB_CatalogWarmupStarted": False,
+            "BPM_CatalogPosePending": True,
+            "BPM_CatalogPoseStarted": False,
             "rendered": rendered,
+            "ExtendTop": True,
+            "ExtendPanel": False,
             "SkeletalMesh": {
                 "bNoSkeletonUpdate": True,
                 "visible": visible,
@@ -209,68 +217,89 @@ def check_behaviors(assets, geometry):
     # active catalog has not actually appeared in a rendered frame.
     actor = fresh()
     vm = VM(d, actor)
-    vm.run("CB_StartCatalogWarmup")
-    assert vm.timers == {"CB_TryStartCatalogWarmup": {"seconds": 0.25, "loop": True}}
+    vm.run("BPM_StartCatalogClosedPose")
+    assert set(vm.timers) == {"BPM_TrySetCatalogClosedPose"}
+    retry = vm.timers["BPM_TrySetCatalogClosedPose"]
+    assert retry["loop"] and abs(retry["seconds"] - 0.05) < 1e-7
     for _ in range(200):
-        vm.run("CB_TryStartCatalogWarmup")
-    assert actor["CB_CatalogWarmingUp"] and not actor["CB_CatalogWarmupStarted"]
+        vm.run("BPM_TrySetCatalogClosedPose")
+    assert actor["BPM_CatalogPosePending"] and not actor["BPM_CatalogPoseStarted"]
     assert actor["SkeletalMesh"]["bNoSkeletonUpdate"]
     actor["SkeletalMesh"]["visible"] = True
-    vm.run("CB_TryStartCatalogWarmup")
+    vm.run("BPM_TrySetCatalogClosedPose")
     assert (
-        not actor["CB_CatalogWarmupStarted"]
-        and "CB_FinishCatalogWarmup" not in vm.timers
+        not actor["BPM_CatalogPoseStarted"]
+        and "BPM_FreezeCatalogClosedPose" not in vm.timers
     )
     actor["rendered"] = True
-    vm.run("CB_TryStartCatalogWarmup")
+    vm.run("BPM_TrySetCatalogClosedPose")
     assert (
-        actor["CB_CatalogWarmupStarted"]
+        actor["BPM_CatalogPoseStarted"]
         and not actor["SkeletalMesh"]["bNoSkeletonUpdate"]
     )
     assert actor["SkeletalMesh"]["tick_enabled"]
-    assert vm.timers == {"CB_FinishCatalogWarmup": {"seconds": 1.0, "loop": False}}
+    assert actor["ExtendTop"] is True and actor["ExtendPanel"] is False
+    assert vm.timers == {"BPM_FreezeCatalogClosedPose": {"seconds": 1.0, "loop": False}}
     actor["SkeletalMesh"]["bNoSkeletonUpdate"] = True
-    vm.run("CB_KeepCatalogStartupPoseUpdating")
+    actor["ExtendTop"] = False  # a stale opening event must not define the closed pose
+    actor["ExtendPanel"] = True
+    vm.run("BPM_KeepCatalogClosedPoseUpdating")
     assert not actor["SkeletalMesh"]["bNoSkeletonUpdate"]
-    vm.run("CB_CancelCatalogWarmupIfOpened", [False])
+    assert actor["ExtendTop"] is True and actor["ExtendPanel"] is False
+    vm.run("BPM_ReleaseCatalogClosedPoseIfOpened", [False])
     assert vm.timers
-    vm.run("CB_FinishCatalogWarmup")
+    vm.run("BPM_FreezeCatalogClosedPose")
+    assert actor["ExtendTop"] is True and actor["ExtendPanel"] is False
     assert (
-        actor["SkeletalMesh"]["bNoSkeletonUpdate"] and not actor["CB_CatalogWarmingUp"]
+        actor["SkeletalMesh"]["bNoSkeletonUpdate"]
+        and not actor["BPM_CatalogPosePending"]
     )
     actor["SkeletalMesh"]["bNoSkeletonUpdate"] = True
-    vm.run("CB_KeepCatalogStartupPoseUpdating")
+    vm.run("BPM_KeepCatalogClosedPoseUpdating")
     assert actor["SkeletalMesh"]["bNoSkeletonUpdate"]
     # Explicit initialization does not rely on a derived Blueprint inheriting
     # the new field's CDO default value.
     actor = fresh(True, True)
-    actor["CB_CatalogWarmingUp"] = False
+    actor["BPM_CatalogPosePending"] = False
     vm = VM(d, actor)
-    vm.run("CB_StartCatalogWarmup")
-    assert actor["CB_CatalogWarmingUp"] and actor["CB_CatalogWarmupStarted"]
+    vm.run("BPM_StartCatalogClosedPose")
+    assert actor["BPM_CatalogPosePending"] and actor["BPM_CatalogPoseStarted"]
     # Opening before a first render or during warmup cancels both timers and
     # leaves the original catalog controls/animations in charge.
     for visible, rendered in [(False, False), (True, True)]:
         actor = fresh(visible, rendered)
         vm = VM(d, actor)
-        vm.run("CB_StartCatalogWarmup")
-        vm.run("CB_CancelCatalogWarmupIfOpened", [True])
-        assert not vm.timers and not actor["CB_CatalogWarmingUp"]
+        vm.run("BPM_StartCatalogClosedPose")
+        vm.run("BPM_ReleaseCatalogClosedPoseIfOpened", [True])
+        assert not vm.timers and not actor["BPM_CatalogPosePending"]
+        assert actor["ExtendTop"] is True
         actor["SkeletalMesh"]["bNoSkeletonUpdate"] = True
-        vm.run("CB_KeepCatalogStartupPoseUpdating")
+        vm.run("BPM_KeepCatalogClosedPoseUpdating")
         assert actor["SkeletalMesh"]["bNoSkeletonUpdate"]
     actor = fresh(True, True)
     vm = VM(d, actor)
-    vm.run("CB_StartCatalogWarmup")
+    vm.run("BPM_StartCatalogClosedPose")
     actor["CrackableActorComponent"]["fully_closed"] = False
-    vm.run("CB_FinishCatalogWarmup")
+    vm.run("BPM_FreezeCatalogClosedPose")
     assert not actor["SkeletalMesh"]["bNoSkeletonUpdate"]
     actor = fresh()
     actor["SkeletalMesh"] = None
     vm = VM(d, actor)
-    vm.run("CB_StartCatalogWarmup")
-    vm.run("CB_TryStartCatalogWarmup")
-    vm.run("CB_FinishCatalogWarmup")
+    vm.run("BPM_StartCatalogClosedPose")
+    vm.run("BPM_TrySetCatalogClosedPose")
+    vm.run("BPM_FreezeCatalogClosedPose")
+
+    # Retain the original AnimInstance and its montage delegate bindings.
+    # Both native closed-state inputs are held while the pose initializes.
+    for name, function in ex.items():
+        if name.startswith("BPM_"):
+            text = str(function.get("ScriptBytecode", []))
+            assert "AnimationMode" not in text and "AnimClass" not in text
+    generated_imports = d["Imports"][len(original["Imports"]) :]
+    assert not any(
+        p["ObjectName"] in ["PlayAnimation", "SetAnimationMode"]
+        for p in generated_imports
+    )
 
     def read_glb(path):
         b = path.read_bytes()
@@ -314,6 +343,6 @@ def check_behaviors(assets, geometry):
     return [
         "Creative-only visibility helper tested through mode changes and real mesh bounds parent verified",
         "native catalog behavior preserved except startup hooks; inherited by Creative catalog",
-        "catalog first-render warmup checked through long loading, visibility, early opening, missing mesh and idle restoration",
+        "startup initializes the native handle-out, controls-flat pose; early opening cancels initialization and leaves native animation in charge",
         "base model and palette bindings unchanged",
     ]

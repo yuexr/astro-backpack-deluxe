@@ -17,6 +17,7 @@ from settings import (
     MAIN_SLOT_SCALE,
     OUT,
     PAK_NAME,
+    PANEL_RETRACTION_FIX,
     PKG,
     VERSION,
 )
@@ -203,6 +204,19 @@ def write_asset(d, target, label):
 
 
 def build():
+    if PANEL_RETRACTION_FIX:
+        from panel_retraction import verify_native_sources
+
+        verify_native_sources()
+    # A build with the workaround disabled must not retain its old override.
+    if not PANEL_RETRACTION_FIX:
+        for suffix in [".uasset", ".uexp"]:
+            old = STAGE / (
+                "Astro/Content/ControlPanels/Missions/MissionsControlPanel_Backpack"
+                + suffix
+            )
+            if old.exists():
+                old.unlink()
     meshes, geometry = build_meshes()
     for label, d in meshes.items():
         write_asset(d, f"Astro/Content/Mods/CompactBackpack16/{label}.uasset", label)
@@ -225,6 +239,13 @@ def build():
             patch_backpack(d)
         write_asset(d, "Astro/Content/" + asset + ".uasset", asset.rsplit("/", 1)[-1])
     catalog = patch_catalog_startup()
+    if PANEL_RETRACTION_FIX:
+        from panel_retraction import MISSION, patch_catalog, patch_mission
+
+        patch_catalog(catalog)
+        mission = extract(MISSION)
+        patch_mission(mission, extract("Astro/Content/Items/Catalog/BackpackCatalog"))
+        write_asset(mission, MISSION + ".uasset", "MissionsControlPanel_Backpack")
     write_asset(
         catalog, "Astro/Content/Items/Catalog/BackpackCatalog.uasset", "BackpackCatalog"
     )
@@ -234,7 +255,7 @@ def build():
         # Keep the same mod ID when replacing an older version.
         "mod_id": "CompactBackpack16",
         "author": "yuexr",
-        "description": "16 backpack slots, 80% item size and an eye button to hide or show the printer recipe tooltip.",
+        "description": "16 backpack slots, 80% item size and an info button to hide or show the printer recipe tooltip.",
         "version": VERSION,
         "game_build": GAME_BUILD,
         "sync": "serverclient",
@@ -257,6 +278,7 @@ def build():
         "controls_and_drone": "vanilla transforms and drone geometry; separate mount shares backpack material and native socket UVs",
         "installed": False,
         "gameplay_tested": False,
+        "panel_retraction_fix": PANEL_RETRACTION_FIX,
         "pak_sha256": hashlib.sha256(pak.read_bytes()).hexdigest(),
     }
     (OUT / "build-report.json").write_text(json.dumps(report, indent=2))

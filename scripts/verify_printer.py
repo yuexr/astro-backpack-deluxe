@@ -8,12 +8,20 @@ import numpy as np
 from asset_io import HERE, es, gltf, ps, xyz
 from game_assets import UMODEL
 from kismet import kismet_size, op_type
-from printer_tooltip import BUTTON, HIDDEN, TOGGLE
+from printer_tooltip import BUTTON, GET_HIDDEN, HIDDEN, TOGGLE
 from settings import OUT
 from verify_behaviors import VM
 
 
 class PrinterVM(VM):
+    def run(self, name, args=()):
+        if name == GET_HIDDEN:
+            getter = next(e for e in self.d["Exports"] if e["ObjectName"] == GET_HIDDEN)
+            return self.eval(
+                getter["ScriptBytecode"][0]["ReturnExpression"], self.actor, {}
+            )
+        return super().run(name, args)
+
     def native_view(self):
         self.actor["native_view_calls"] += 1
         if self.actor["output"] is None:
@@ -77,10 +85,16 @@ class PressVM(VM):
             )
             return
         if kind == "EX_VirtualFunction":
-            assert x["VirtualFunctionName"] == TOGGLE and obj is self.actor["parent"]
-            return self.backpack_vm.run(TOGGLE)
-        if kind == "EX_FinalFunction" and x["StackNode"] < 0:
+            assert (
+                x["VirtualFunctionName"] in [TOGGLE, GET_HIDDEN]
+                and obj is self.actor["parent"]
+            )
+            return self.backpack_vm.run(x["VirtualFunctionName"])
+        if kind in ["EX_FinalFunction", "EX_CallMath"] and x["StackNode"] < 0:
             name = self.d["Imports"][-x["StackNode"] - 1]["ObjectName"]
+            if name == "SelectString":
+                args = [self.eval(p, obj, local) for p in x["Parameters"]]
+                return args[0] if args[2] else args[1]
             if name == "GetAttachParentActor":
                 return self.actor["parent"]
             if name == "PostEvent":
@@ -99,6 +113,13 @@ def check_printer(assets):
     assert field["PropertyFlags"] == "CPF_None"
     assert ps(exports["Default__BackpackRail_C"])[HIDDEN]["Value"] is False
     assert "BPM_ApplyPrinterTooltip" not in exports
+    getter = exports[GET_HIDDEN]
+    assert "FUNC_Net" not in getter["FunctionFlags"]
+    assert getter["LoadedProperties"][0]["Name"] == "ReturnValue"
+    assert "CPF_ReturnParm" in getter["LoadedProperties"][0]["PropertyFlags"]
+    assert (
+        sum(map(kismet_size, getter["ScriptBytecode"])) == getter["ScriptBytecodeSize"]
+    )
     view = exports["CLIENT Printer View"]
     assert sum(map(kismet_size, view["ScriptBytecode"])) == view["ScriptBytecodeSize"]
     for label in [TOGGLE]:
@@ -242,7 +263,17 @@ def check_printer(assets):
     ]
     sound = callback["ScriptBytecode"][1]["Expression"]["ContextExpression"]
     assert head["Imports"][-sound["StackNode"] - 1]["ObjectName"] == "PostEvent"
-    assert sound["Parameters"][0] == native_click["Parameters"][0]
+    selection = sound["Parameters"][0]
+    assert head["Imports"][-selection["StackNode"] - 1]["ObjectName"] == "SelectString"
+    assert selection["Parameters"][0] == native_click["Parameters"][0]
+    native_left = es(actor_source)["NavigateLeft"]["ScriptBytecode"][0]["Expression"][
+        "ContextExpression"
+    ]
+    assert selection["Parameters"][1] == native_left["Parameters"][0]
+    assert (
+        selection["Parameters"][2]["ContextExpression"]["VirtualFunctionName"]
+        == GET_HIDDEN
+    )
     assert sound["Parameters"][2] == native_click["Parameters"][2]
     assert sound["Parameters"][1]["ObjectExpression"]["Variable"]["New"]["Path"] == [
         BUTTON
@@ -258,7 +289,10 @@ def check_printer(assets):
     assert parent[HIDDEN] and parent["output"]["state"] == 0
     press.run("BPM_EyePressed")
     assert not parent[HIDDEN] and parent["output"]["state"] == 2
-    assert press.sounds == [["play_sym_right", eye_actor, False]] * 2
+    assert press.sounds == [
+        ["play_sym_left", eye_actor, False],
+        ["play_sym_right", eye_actor, False],
+    ]
     press.actor["parent"] = None
     press.run("BPM_EyePressed")
     assert len(press.sounds) == 2 and parent["native_view_calls"] == 2
@@ -291,29 +325,8 @@ def check_printer(assets):
         == es(original_button)["ButtonMesh_GEN_VARIABLE"]["Data"]
     )
     button = assets["PrinterEyeButton"]
-    bx = es(button)
-    rays = bx["BPM_EyeRays_GEN_VARIABLE"]
-    ray_node = bx["SCS_BPM_EyeRays"]
-    assert ps(ray_node)["ParentComponentOrVariableName"]["Value"] == "ButtonMesh"
-    assert (
-        ps(ray_node)["ParentComponentOwnerClassName"]["Value"]
-        == "ControlPanelButtonBase_C"
-    )
-    assert xyz(ps(rays)["RelativeScale3D"]) == {
-        "$type": "UAssetAPI.UnrealTypes.FVector, UAssetAPI",
-        "X": 1.0,
-        "Y": 1.0,
-        "Z": 1.0,
-    }
-    rotation = xyz(ps(rays)["RelativeRotation"])
-    assert all(float(rotation[axis]) == 0 for axis in ["Pitch", "Yaw", "Roll"])
-    body = {p["Name"]: p for p in ps(rays)["BodyInstance"]["Value"]}
-    assert body["CollisionEnabled"]["EnumValue"] == "ECollisionEnabled::NoCollision"
-    assert not ps(rays)["CastShadow"]["Value"]
-    assert (
-        button["Imports"][-ps(rays)["StaticMesh"]["Value"] - 1]["ObjectName"]
-        == "PrinterEyeRays"
-    )
+    assert not any("Rays" in e["ObjectName"] for e in button["Exports"])
+    assert "PrinterEyeRays" not in assets
     # Static material references stay native; no palette or RGB parameters are changed.
     old_mesh = json.loads(
         (
@@ -334,9 +347,9 @@ def check_printer(assets):
             & (faces[:, 0] != faces[:, 2])
         )
 
-    approved = json.loads((HERE.parent / "models/printer-eye.json").read_text())
-    assert sum(len(p["triangles"]) for p in approved["parts"].values()) == 71
-    for label, part in [("PrinterEyeMesh", "eye"), ("PrinterEyeRays", "rays")]:
+    approved = json.loads((HERE.parent / "models/printer-info.json").read_text())
+    assert sum(len(p["triangles"]) for p in approved["parts"].values()) == 41
+    for label, part in [("PrinterEyeMesh", "info")]:
         assert assets[label]["Imports"] == old_mesh["Imports"]
         assert (
             ps(es(assets[label])[label])["StaticMaterials"]
@@ -388,10 +401,10 @@ def check_printer(assets):
         ]
         assert len(glyph_triangles) == len(approved["parts"][part]["triangles"])
     return [
-        "eye button press toggles once and plays the native right-button sound once; no recipe navigation",
+        "eye button uses native left sound when hiding and right when showing; no recipe navigation",
         "tooltip starts visible; its hide setting is local and not replicated",
         "hidden tooltip receives only collapsed requests across 100 updates, recipe changes, closing and missing tooltips",
         "remote backpacks cannot change the local tooltip preference",
         "existing printer components, rounded button shape and material colours preserved",
-        "approved eye and rays match; rays have identity rotation and follow the native button without collision",
+        "approved 41-triangle info disc matches cooked mesh; native casing and white glyph UV retained",
     ]

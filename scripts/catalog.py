@@ -1,4 +1,4 @@
-"""Let the catalog settle into its closed pose after loading."""
+"""Evaluate the native closed catalog pose before freezing its skeleton."""
 
 import base64
 import copy
@@ -88,13 +88,13 @@ def patch_catalog_startup():
     field = copy.deepcopy(
         next(p for p in cls["LoadedProperties"] if p["Name"] == "ExtendPanel")
     )
-    field.update(Name=name("CB_CatalogWarmingUp"), PropertyFlags="CPF_None")
+    field.update(Name=name("BPM_CatalogPosePending"), PropertyFlags="CPF_None")
     cls["LoadedProperties"].append(field)
-    cdo["Data"].append(prop(d, "Bool", "CB_CatalogWarmingUp", True))
+    cdo["Data"].append(prop(d, "Bool", "BPM_CatalogPosePending", True))
     started_field = copy.deepcopy(field)
-    started_field["Name"] = name("CB_CatalogWarmupStarted")
+    started_field["Name"] = name("BPM_CatalogPoseStarted")
     cls["LoadedProperties"].append(started_field)
-    cdo["Data"].append(prop(d, "Bool", "CB_CatalogWarmupStarted", False))
+    cdo["Data"].append(prop(d, "Bool", "BPM_CatalogPoseStarted", False))
     eng = imp("/Script/Engine", 0, "Package")
     astro = imp("/Script/Astro", 0, "Package")
     skel = imp("SkeletalMeshComponent", eng)
@@ -117,12 +117,12 @@ def patch_catalog_startup():
         ctx(mesh(), var("bNoSkeletonUpdate", skel)),
         ex("EX_True" if state else "EX_False"),
     )
-    active = lambda: var("CB_CatalogWarmingUp")
-    started = lambda: var("CB_CatalogWarmupStarted")
+    active = lambda: var("BPM_CatalogPosePending")
+    started = lambda: var("BPM_CatalogPoseStarted")
     stop_poll = lambda: call(
         clear_timer,
         ex("EX_Self"),
-        ex("EX_StringConst", Value="CB_TryStartCatalogWarmup"),
+        ex("EX_StringConst", Value="BPM_TrySetCatalogClosedPose"),
     )
     begin = next(e for e in d["Exports"] if e["ObjectName"] == "ReceiveBeginPlay")
     closed_handler = next(
@@ -191,16 +191,20 @@ def patch_catalog_startup():
         return fid
 
     keep = function(
-        "CB_KeepCatalogStartupPoseUpdating",
+        "BPM_KeepCatalogClosedPoseUpdating",
         lambda _: [
             guard(active()),
             guard(started()),
             guard(call(valid, mesh())),
+            # Vanilla closes with the handle extended and the controls flat.
+            # The unevaluated startup mesh can still show the opening pose.
+            assign(var("ExtendTop"), ex("EX_True")),
+            assign(var("ExtendPanel"), ex("EX_False")),
             freeze(False),
         ],
     )
     function(
-        "CB_FinishCatalogWarmup",
+        "BPM_FreezeCatalogClosedPose",
         lambda _: [
             assign(active(), ex("EX_False")),
             stop_poll(),
@@ -211,12 +215,14 @@ def patch_catalog_startup():
         ],
     )
     attempt = function(
-        "CB_TryStartCatalogWarmup",
+        "BPM_TrySetCatalogClosedPose",
         lambda _: [
             guard(active()),
             guard(call(valid, mesh())),
             guard(ctx(mesh(), call(visible))),
             guard(call(recent, ex("EX_FloatConst", Value=0.25))),
+            guard(call(valid, component())),
+            guard(ctx(component(), call(fully_closed))),
             assign(started(), ex("EX_True")),
             call(keep, local=True),
             ctx(mesh(), call(tick, ex("EX_True"))),
@@ -224,7 +230,7 @@ def patch_catalog_startup():
             call(
                 set_timer,
                 ex("EX_Self"),
-                ex("EX_StringConst", Value="CB_FinishCatalogWarmup"),
+                ex("EX_StringConst", Value="BPM_FreezeCatalogClosedPose"),
                 ex("EX_FloatConst", Value=1.0),
                 ex("EX_False"),
                 ex("EX_FloatConst", Value=0.0),
@@ -233,15 +239,16 @@ def patch_catalog_startup():
         ],
     )
     start = function(
-        "CB_StartCatalogWarmup",
+        "BPM_StartCatalogClosedPose",
         lambda _: [
             assign(active(), ex("EX_True")),
             assign(started(), ex("EX_False")),
             call(
                 set_timer,
                 ex("EX_Self"),
-                ex("EX_StringConst", Value="CB_TryStartCatalogWarmup"),
-                ex("EX_FloatConst", Value=0.25),
+                ex("EX_StringConst", Value="BPM_TrySetCatalogClosedPose"),
+                # Begin promptly after the native close transition finishes.
+                ex("EX_FloatConst", Value=0.05),
                 ex("EX_True"),
                 ex("EX_FloatConst", Value=0.0),
                 ex("EX_FloatConst", Value=0.0),
@@ -250,7 +257,7 @@ def patch_catalog_startup():
         ],
     )
     cancel = function(
-        "CB_CancelCatalogWarmupIfOpened",
+        "BPM_ReleaseCatalogClosedPoseIfOpened",
         lambda fid: [
             guard(ex("EX_LocalVariable", Variable=ptr(fid, "Opened"))),
             assign(active(), ex("EX_False")),
@@ -258,16 +265,16 @@ def patch_catalog_startup():
             call(
                 clear_timer,
                 ex("EX_Self"),
-                ex("EX_StringConst", Value="CB_FinishCatalogWarmup"),
+                ex("EX_StringConst", Value="BPM_FreezeCatalogClosedPose"),
             ),
         ],
         param=True,
     )
 
-    def post(wrapper, expr, dependency):
+    def post(wrapper, expr, dependency, before=False):
         code = wrapper["ScriptBytecode"]
         i = next(i for i, x in enumerate(code) if op_type(x) == "EX_Return")
-        code.insert(i, expr)
+        code.insert(0 if before else i, expr)
         wrapper["ScriptBytecodeSize"] += kismet_size(expr)
         wrapper["CreateBeforeSerializationDependencies"].append(dependency)
 
@@ -282,5 +289,6 @@ def patch_catalog_startup():
             local=True,
         ),
         cancel,
+        before=True,
     )
     return d

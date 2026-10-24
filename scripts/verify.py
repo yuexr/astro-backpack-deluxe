@@ -10,7 +10,7 @@ import subprocess
 import numpy as np
 from asset_io import HERE, es, gltf, prop, ps, xyz
 from game_assets import ENV, GUI, REPAK, UMODEL
-from settings import OUT, PAK_NAME, VERSION
+from settings import OUT, PAK_NAME, PANEL_RETRACTION_FIX, VERSION
 
 STAGE = OUT / "staging"
 
@@ -459,7 +459,10 @@ listing = subprocess.check_output(
 expected = sorted(
     p.relative_to(STAGE).as_posix() for p in STAGE.rglob("*") if p.is_file()
 )
-assert sorted(listing) == expected and len(listing) == 2 * (10 + len(front_labels)) + 1
+assert (
+    sorted(listing) == expected
+    and len(listing) == 2 * (9 + len(front_labels) + int(PANEL_RETRACTION_FIX)) + 1
+)
 for member in listing:
     data = subprocess.check_output([str(REPAK), "get", str(pak), member])
     assert data == (STAGE / member).read_bytes(), member
@@ -486,6 +489,9 @@ report["offline_checks"].extend(check_behaviors(assets, geometry))
 from verify_printer import check_printer
 
 report["offline_checks"].extend(check_printer(assets))
+from verify_panel_retraction import check_panel_retraction
+
+report["offline_checks"].extend(check_panel_retraction(assets))
 report["printer_tooltip_verified"] = True
 (OUT / "build-report.json").write_text(json.dumps(report, indent=2))
 print(f"{VERSION}: {len(report['offline_checks'])} build checks passed.")

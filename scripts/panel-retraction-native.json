@@ -1,0 +1,18 @@
+{
+  "game_build": "1.45.1.0",
+  "exe_sha256": "4a57b4b1ac64defa09ea6d6c987d5e513d79243a2b33ab05cba099ad1e377675",
+  "assets": {
+    "Astro/Content/Items/Catalog/BackpackCatalog.uasset": "f398fd439db2cd316f6fbed902eef0569bbdb709adc0b6304fd5ec7866a3c7cd",
+    "Astro/Content/Items/Catalog/BackpackCatalog.uexp": "79072188c6d96f9b0969bca60d0a56d90df1ae1f9103cd74b5c00d6b9974090d",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_AnimBP.uasset": "473c610c819a2527072f7e5b6bbdc561c84d33f76f97fdda1f2731041577112e",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_AnimBP.uexp": "5934b486fdad36e9e962581b9ce85ddb2722e85f173f40fc5ffd7b1eaf5505ac",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_TopActivate.uasset": "95b648c69e9a7a35fef7ffa311affeceee25aebc1c7e72f6f43981f1df6c6a1f",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_TopActivate.uexp": "b27671226941717b87e75c9cbbc09c57a48ee79b263ee9d33b5be7980396178c",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_TopDeactivate.uasset": "e0aca8b2e24e36e57a247b667945f03ca31293dfcb4cb8c3fe35bfc73ab14f79",
+    "Astro/Content/Animations/PortableDevices/BackpackCatalog/BackpackCatalog_TopDeactivate.uexp": "7e52b193ec5ab4e86722e81a40041d335ebb6fc76c35ad830c3500b75b9d713a",
+    "Astro/Content/ControlPanels/Missions/MissionsControlPanel_Backpack.uasset": "594ef42a3e2735cd508e0be3a1d6eb02133bfb626d88cf6b432038130780c336",
+    "Astro/Content/ControlPanels/Missions/MissionsControlPanel_Backpack.uexp": "573f23da253c2e898b96ddd86fd2202032dddde5d2a660ab184485282a35f4ed",
+    "Astro/Content/Animations/ControlPanels/ControlPanelMission/ControlPanelMission_AnimBP.uasset": "056724af209b648d590991847ef0e75696311efdf3f987d5f6cdb10975ff2cb6",
+    "Astro/Content/Animations/ControlPanels/ControlPanelMission/ControlPanelMission_AnimBP.uexp": "220d0db09e263213fbb05ae13160525fc96a930409fc1e37921f7672aaf8fe93"
+  }
+}

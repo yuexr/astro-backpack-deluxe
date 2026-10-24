@@ -1,4 +1,4 @@
-"""A native-shaped eye button for the backpack printer's output tooltip."""
+"""A native-shaped info button for the backpack printer's output tooltip."""
 
 import base64
 import copy
@@ -9,11 +9,13 @@ import numpy as np
 from asset_io import HERE, append, es, gltf, prop, ps, xyz
 from blueprint import Blueprint, replace_instruction
 from game_assets import extract
+from kismet import kismet_size
 from settings import OUT, PKG
 
 BUTTON = "BPM_EyeButton"
 HIDDEN = "BPM_PrinterTooltipHidden"
 TOGGLE = "BPM_TogglePrinterTooltip"
+GET_HIDDEN = "BPM_IsPrinterTooltipHidden"
 
 
 def renamed(document, replacements):
@@ -29,7 +31,7 @@ def renamed(document, replacements):
     return walk(document)
 
 
-def eye_mesh(part="eye"):
+def info_mesh():
     source = "Astro/Content/Models/ControlPanels/control_panel_button_round_arrow"
     document = extract(source)
     mesh = next(
@@ -70,10 +72,9 @@ def eye_mesh(part="eye"):
     assert len(arrow) == 57 and len(arrow_faces) == 62
     assert np.isin(indices[arrow_faces], arrow).all()
 
-    # The approved icon has 71 triangles. Its eye and rays fit in two native
-    # mesh buffers; both move together with the original button when pressed.
-    approved = json.loads((HERE.parent / "models/printer-eye.json").read_text())
-    glyph = approved["parts"][part]
+    # The approved info disc fits inside the native arrow buffer.
+    approved = json.loads((HERE.parent / "models/printer-info.json").read_text())
+    glyph = approved["parts"]["info"]
     points = np.array(glyph["positions"], dtype="<f4")
     faces = np.array(glyph["triangles"])
     assert len(points) <= len(arrow) and len(faces) <= len(arrow_faces)
@@ -88,8 +89,6 @@ def eye_mesh(part="eye"):
     positions[arrow] = points[0]
     positions[allocated] = points
     new_indices = indices.copy()
-    if part == "rays":
-        new_indices[:] = 0
     new_indices[arrow_faces] = 0
     new_indices[arrow_faces[: len(faces)]] = allocated[faces]
     texcoords[allocated, :2] = np.array([0.689453125, 0.92919921875], dtype="<f2")
@@ -106,14 +105,15 @@ def eye_mesh(part="eye"):
         raw[offset : offset + data.nbytes] = data.tobytes()
     mesh["Extras"] = base64.b64encode(raw).decode()
     np.savez(
-        OUT / f"printer-{part}-expected.npz",
+        OUT / "printer-info-expected.npz",
         positions=positions,
         indices=new_indices,
         uv=texcoords[:, :2].astype("f4"),
         original_positions=original_positions,
         casing=np.flatnonzero(~np.isin(np.arange(181), arrow)),
     )
-    asset_name = "PrinterEyeMesh" if part == "eye" else "PrinterEyeRays"
+    # Keep the existing private asset path for saved backpacks.
+    asset_name = "PrinterEyeMesh"
     return renamed(
         document,
         {
@@ -145,109 +145,7 @@ def eye_button():
     es(document)["Default__PrinterEyeButton_C"]["Data"].append(
         prop(document, "Bool", "bButtonEnabled", True)
     )
-    attach_eye_rays(document)
     return document
-
-
-def attach_eye_rays(document):
-    editor = Blueprint(document)
-    exports = es(document)
-    mesh_source = exports["ButtonMesh_GEN_VARIABLE"]
-    mesh = copy.deepcopy(mesh_source)
-    package = editor.imp(PKG + "PrinterEyeRays", kind="Package")
-    asset = editor.imp("PrinterEyeRays", package, "StaticMesh", "/Script/Engine")
-    mesh.update(
-        ObjectName=editor.name("BPM_EyeRays_GEN_VARIABLE"),
-        OuterIndex=editor.cid,
-        SerialSize=0,
-        SerialOffset=0,
-    )
-    ps(mesh)["StaticMesh"]["Value"] = asset
-    xyz(ps(mesh)["RelativeScale3D"]).update(X=1.0, Y=1.0, Z=1.0)
-    # Inherit the native mesh's disabled collision and shadows explicitly too.
-    base = extract(
-        "Astro/Content/ControlPanels/ModularControlPanel/PanelParts/ControlPanelButtonBase"
-    )
-    base_mesh = es(base)["ButtonMesh_GEN_VARIABLE"]
-    # This component is already a child of ButtonMesh. Its template otherwise
-    # adds ButtonMesh's native 90-degree turn a second time, hiding the rays.
-    rotation = copy.deepcopy(ps(base_mesh)["RelativeRotation"])
-    editor.copy_names(base, rotation)
-    xyz(rotation).update(Pitch=0.0, Yaw=0.0, Roll=0.0)
-    mesh["Data"].append(rotation)
-    editor.name("ByteProperty")
-    for name in ["BodyInstance", "CastShadow"]:
-        field = copy.deepcopy(ps(base_mesh)[name])
-        editor.copy_names(base, field)
-        mesh["Data"].append(field)
-    mesh["CreateBeforeSerializationDependencies"] = [asset]
-    mesh["SerializationBeforeSerializationDependencies"] = []
-    mesh["SerializationBeforeCreateDependencies"] = [
-        mesh["ClassIndex"],
-        mesh["TemplateIndex"],
-    ]
-    mesh["CreateBeforeCreateDependencies"] = [editor.cid]
-    component_id = append(document, mesh)
-    field = copy.deepcopy(
-        next(p for p in editor.cls["LoadedProperties"] if p["Name"] == "TooltipAnchor")
-    )
-    field.update(Name=editor.name("BPM_EyeRays"), PropertyClass=mesh["ClassIndex"])
-    editor.cls["LoadedProperties"].append(field)
-    editor.cls["CreateBeforeSerializationDependencies"].append(component_id)
-    scs = exports["SimpleConstructionScript_0"]
-    scs_id = document["Exports"].index(scs) + 1
-    node = copy.deepcopy(exports["SCS_Node_1"])
-    node.update(
-        ObjectName=editor.name("SCS_BPM_EyeRays"),
-        OuterIndex=scs_id,
-        SerialSize=0,
-        SerialOffset=0,
-    )
-    node["Data"] = [
-        p
-        for p in node["Data"]
-        if p["Name"]
-        not in [
-            "ChildNodes",
-            "ParentComponentOrVariableName",
-            "ParentComponentOwnerClassName",
-            "bIsParentComponentNative",
-        ]
-    ]
-    ps(node)["ComponentClass"]["Value"] = mesh["ClassIndex"]
-    ps(node)["ComponentTemplate"]["Value"] = component_id
-    ps(node)["InternalVariableName"]["Value"] = editor.name("BPM_EyeRays")
-    ps(node)["VariableGuid"]["Value"][0]["Value"] = (
-        "{"
-        + str(
-            uuid.uuid5(uuid.NAMESPACE_DNS, "backpack-pro-max.printer-eye-rays")
-        ).upper()
-        + "}"
-    )
-    node["Data"] += [
-        prop(
-            document, "Name", "ParentComponentOrVariableName", editor.name("ButtonMesh")
-        ),
-        prop(
-            document,
-            "Name",
-            "ParentComponentOwnerClassName",
-            editor.name("ControlPanelButtonBase_C"),
-        ),
-        prop(document, "Bool", "bIsParentComponentNative", False),
-    ]
-    node["CreateBeforeSerializationDependencies"] = [component_id, mesh["ClassIndex"]]
-    node["SerializationBeforeSerializationDependencies"] = []
-    node["SerializationBeforeCreateDependencies"] = [
-        node["ClassIndex"],
-        node["TemplateIndex"],
-    ]
-    node["CreateBeforeCreateDependencies"] = [scs_id]
-    node_id = append(document, node)
-    for label in ["RootNodes", "AllNodes"]:
-        array = ps(scs)[label]["Value"]
-        array.append(prop(document, "Object", str(len(array)), node_id))
-    scs["CreateBeforeSerializationDependencies"].append(node_id)
 
 
 def printer_head():
@@ -375,6 +273,24 @@ def printer_head():
     native_post = native_sound["ContextExpression"]
     event = copy.deepcopy(native_post["Parameters"][0])
     assert event["Value"] == "play_sym_right"
+    left_event = copy.deepcopy(
+        src["NavigateLeft"]["ScriptBytecode"][0]["Expression"]["ContextExpression"][
+            "Parameters"
+        ][0]
+    )
+    assert left_event["Value"] == "play_sym_left"
+    math_library = editor.imp("KismetMathLibrary", engine)
+    select_string = editor.imp("SelectString", math_library, "Function")
+    # Read the current setting before toggling: hidden -> show/right, visible -> hide/left.
+    current_hidden = editor.ctx(
+        copy.deepcopy(parent_actor),
+        editor.ex(
+            "EX_VirtualFunction",
+            VirtualFunctionName=editor.name(GET_HIDDEN),
+            Parameters=[],
+        ),
+    )
+    event = editor.call(select_string, event, left_event, current_hidden, math=True)
     child_actor_owner = native_post["Parameters"][1]["ContextExpression"]["Variable"][
         "New"
     ]["ResolvedOwner"]
@@ -474,6 +390,19 @@ def printer_head():
 def patch_backpack(document):
     editor = Blueprint(document)
     editor.bool_field(HIDDEN, False)
+    getter_id = editor.function(GET_HIDDEN, [])
+    getter = document["Exports"][getter_id - 1]
+    getter["ScriptBytecode"][0]["ReturnExpression"] = editor.var(HIDDEN)
+    getter["ScriptBytecodeSize"] = sum(map(kismet_size, getter["ScriptBytecode"]))
+    result = copy.deepcopy(
+        next(p for p in editor.cls["LoadedProperties"] if p["Name"] == HIDDEN)
+    )
+    result.update(
+        Name=editor.name("ReturnValue"),
+        PropertyFlags="CPF_Parm, CPF_OutParm, CPF_ReturnParm",
+    )
+    getter["LoadedProperties"] = [result]
+    getter["FunctionFlags"] += ", FUNC_BlueprintPure, FUNC_Const"
     imports = {e["ObjectName"]: -i - 1 for i, e in enumerate(document["Imports"])}
     printer_view = es(document)["CLIENT Printer View"]
     # Decide once, before native code asks the tooltip to animate. Collapsing it
@@ -513,16 +442,12 @@ def patch_backpack(document):
 def build_printer_assets():
     return {
         "PrinterEyeMesh": (
-            eye_mesh(),
+            info_mesh(),
             "Astro/Content/Mods/CompactBackpack16/PrinterEyeMesh.uasset",
         ),
         "PrinterEyeButton": (
             eye_button(),
             "Astro/Content/Mods/CompactBackpack16/PrinterEyeButton.uasset",
-        ),
-        "PrinterEyeRays": (
-            eye_mesh("rays"),
-            "Astro/Content/Mods/CompactBackpack16/PrinterEyeRays.uasset",
         ),
         "Printhead_Backpack": (
             printer_head(),

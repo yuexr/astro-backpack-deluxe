@@ -21,6 +21,8 @@ def kismet_size(x):
         return 9
     if t in ["EX_FloatConst", "EX_IntConst"]:
         return 5
+    if t in ["EX_VectorConst", "EX_RotationConst"]:
+        return 13
     if t == "EX_ByteConst":
         return 2
     if t in ["EX_VirtualFunction", "EX_LocalVirtualFunction"]:

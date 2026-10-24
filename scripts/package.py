@@ -4,13 +4,17 @@ import hashlib
 import json
 import zipfile
 
-from settings import ARCHIVE_NAME, OUT, PAK_NAME, ROOT, VERSION
+from settings import ARCHIVE_NAME, OUT, PAK_NAME, PANEL_RETRACTION_FIX, ROOT, VERSION
 
 DIST = ROOT / "dist"
 DIST.mkdir(exist_ok=True)
 report = json.loads((OUT / "build-report.json").read_text())
 assert report["version"] == VERSION
-assert len(report["offline_checks"]) == 22 and report["printer_tooltip_verified"]
+assert (
+    len(report["offline_checks"]) == 22 + 4 * int(PANEL_RETRACTION_FIX)
+    and report["printer_tooltip_verified"]
+)
+assert report["panel_retraction_fix"] == PANEL_RETRACTION_FIX
 pak = OUT / PAK_NAME
 assert hashlib.sha256(pak.read_bytes()).hexdigest() == report["pak_sha256"]
 archive = DIST / ARCHIVE_NAME
